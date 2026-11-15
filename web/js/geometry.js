@@ -305,6 +305,12 @@ export function buildBin(M, P) {
     const tabRows = Lt >= 3 ? (P.labelRows ? [...Array(P.cy).keys()] : [P.cy - 1]) : [];
 
     if (zTop > zFloor + 0.5 && (P.cx > 1 || P.cy > 1 || rounded || tabRows.length)) {
+      // Above the divider top everything is open, except that with the thin lip the band runs
+      // straight down to the top of a divider or label tab where it meets the wall (no groove
+      // under it).
+      const open0 = P.lipStyle === 'thin'
+        ? loft(sampleProfile((z) => (z <= H + 2.5 ? 1.9 : body.fn(z)), zTop, topZ + 2, body.breaks), 0, 0, W, L)
+        : keep(keep(M.cube([W + 4, L + 4, topZ + 2 - zTop], false)).translate([-W / 2 - 2, -L / 2 - 2, zTop]));
       const boxes = [];
       const rr = rounded ? r : 0.01;
       for (let i = 0; i < P.cx; i++) {
@@ -336,18 +342,15 @@ export function buildBin(M, P) {
             for (const [y, z] of [[yF, zFloor - 2], [yF, zF], [yB + 1, zK - tan], [yB + 1, zFloor - 2]]) {
               under.push([x0 - cw / 2 - 1, y, z], [x0 + cw / 2 + 1, y, z]);
             }
-            box = keep(box.intersect(keep(keep(M.hull(under)).add(shorter))));
+            // in front of the tab: the shorter box; under it: the full box; above its top: the
+            // full box limited like the open region, so corners there stay rounded too
+            box = keep(box.intersect(unionAll([keep(M.hull(under)), shorter, open0])));
           }
           boxes.push(box);
         }
       }
 
-      // Above the divider top everything is open, except that with the thin lip the band runs
-      // straight down to the top of a divider or label tab where it meets the wall (no groove
-      // under it).
-      let open = P.lipStyle === 'thin'
-        ? loft(sampleProfile((z) => (z <= H + 2.5 ? 1.9 : body.fn(z)), zTop, topZ + 2, body.breaks), 0, 0, W, L)
-        : keep(keep(M.cube([W + 4, L + 4, topZ + 2 - zTop], false)).translate([-W / 2 - 2, -L / 2 - 2, zTop]));
+      let open = open0;
 
       // Raised dividers (on grid lines) stay solid up to their own top, and so do the corners
       // next to them (at the walls and where two raised dividers cross), so their fillets run
