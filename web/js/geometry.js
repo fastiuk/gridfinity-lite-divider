@@ -303,6 +303,13 @@ export function buildBin(M, P) {
     const tan = Math.tan((G.tabAngle * Math.PI) / 180);
     const Lt = P.label ? Math.min(G.tabDepth, cl * 0.6, (zTop - G.tabFront - zFloor - 1.5) / tan) : 0;
     const tabRows = Lt >= 3 ? (P.labelRows ? [...Array(P.cy).keys()] : [P.cy - 1]) : [];
+    // How far the lip reaches in past the wall face at the height of a tab's front face.
+    const zF0 = zTop - G.tabFront;
+    const lipIn = Math.max(0, (P.lipStyle === 'thin'
+      ? 1.9
+      : P.lipStyle === 'standard'
+        ? Math.min(...[0, 0.25, 0.5, 0.75, 1].map((k) => body.fn(zF0 + k * G.tabFront)))
+        : P.wall) - P.wall);
 
     if (zTop > zFloor + 0.5 && (P.cx > 1 || P.cy > 1 || rounded || tabRows.length)) {
       // Above the divider top everything is open, except that with the thin lip the band runs
@@ -336,10 +343,26 @@ export function buildBin(M, P) {
             const lF = yF - rowFront(j);
             // At the height of the tab's front face the compartment is a shorter rounded box,
             // which rounds the front face's vertical edges; below that it is the full box.
-            const shorter = keep(M.hull([
-              ...ringPoints(x0, rowFront(j) + lF / 2, cw, lF, 0, zF - 0.05, rr, 0.01),
-              ...ringPoints(x0, rowFront(j) + lF / 2, cw, lF, 0, topZ + 1, rr, 0.01),
+            // Next to an outer wall the rounding is taken from where the lip starts (the ledge of
+            // the standard lip, the band of the thin lip), not from the wall face, so it is not
+            // hidden in the lip. Just in front of the tab the box therefore steps in from the
+            // wall to that line along a rounded S-curve.
+            const prism = (cx, cy, w, l, rad) => keep(M.hull([
+              ...ringPoints(cx, cy, w, l, 0, zF - 0.05, rad, 0.01),
+              ...ringPoints(cx, cy, w, l, 0, topZ + 1, rad, 0.01),
             ]));
+            const dl = i === 0 ? lipIn : 0, dr = i === P.cx - 1 ? lipIn : 0;
+            let shorter;
+            if (dl + dr > 0.05 && lF > 2 * rr + lipIn + 2) {
+              const xL = colLeft(i), xR = xL + cw;
+              const yA = rowFront(j) - 1, yS = yF - rr;  // full-width part ends one radius before the tab
+              const full = prism((xL + xR) / 2, (yA + yS) / 2, cw, yS - yA, lipIn);
+              const y2 = Math.max(yA, yF - rr - lipIn - 2 * rr - 2);
+              const inner = prism((xL + dl + xR - dr) / 2, (y2 + yF) / 2, cw - dl - dr, yF - y2, rr);
+              shorter = keep(full.add(inner));
+            } else {
+              shorter = prism(x0, rowFront(j) + lF / 2, cw, lF, rr);
+            }
             const frontLow = keep(keep(M.cube([cw + 2, lF + 2, zF - zFloor + 2], false))
               .translate([x0 - cw / 2 - 1, rowFront(j) - 2, zFloor - 2]));
             // Space under the tab. It starts 0.05 mm in front of the tab so it overlaps the
