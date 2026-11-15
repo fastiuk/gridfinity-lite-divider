@@ -1,4 +1,4 @@
-import { DEFAULTS, G, buildBin, compartmentSize, dividerLayout, fileBase, maxComp, meshPositions, outerSize, sanitize } from './geometry.js';
+import { DEFAULTS, G, buildBin, compartmentSize, fileBase, maxComp, meshPositions, outerSize, sanitize } from './geometry.js';
 import { binarySTL } from './stl.js';
 import { meshToStep } from './step.js';
 import { loadKernel } from './kernel.js';
@@ -8,7 +8,7 @@ import { fmt, getLang, setLang, t } from './i18n.js';
 const $ = (id) => document.getElementById(id);
 const INTS = ['ux', 'uy', 'uz', 'cx', 'cy'];
 const FLOATS = ['magD', 'wall', 'floor', 'divT', 'divLower', 'scoopR', 'fillet'];
-const BOOLS = ['label', 'labelRows', 'scoop', 'gridTall', 'magnets', 'screws'];
+const BOOLS = ['label', 'labelRows', 'scoop', 'magnets', 'screws'];
 
 const store = {
   get(k) { try { return JSON.parse(localStorage.getItem('gfld:' + k)); } catch { return null; } },
@@ -89,16 +89,6 @@ function refreshLabels() {
   const rowsOk = P.label && P.cy > 1;
   $('labelRows').disabled = !rowsOk;
   $('labelRows-wrap').classList.toggle('disabled', !rowsOk);
-
-  const lipOn = P.lipStyle !== 'none';
-  const layout = dividerLayout({ ...P, gridTall: true });
-  const all = [...layout.xs, ...layout.ys];
-  const onGrid = all.filter((d) => d.top).length;
-  setField('gridTall', 'disabled', !lipOn);
-  $('gridTall-wrap').classList.toggle('disabled', !lipOn);
-  setField('grid-hint', 'textContent', !lipOn
-    ? t('gridHintNoLip')
-    : all.length ? t('gridHint', { n: onGrid, total: all.length }) : t('gridHintNone'));
 
   $('fname').textContent = fileBase(P) + '.' + format;
   $('download-label').textContent = t('download', { fmt: format.toUpperCase() });
@@ -253,6 +243,6 @@ async function main() {
 }
 
 // Exposed for the browser test page and for debugging from the console.
-window.gridfinity = { G, buildBin, sanitize, dividerLayout, meshToStep, get kernel() { return kernel; }, get current() { return current; } };
+window.gridfinity = { G, buildBin, sanitize, meshToStep, get kernel() { return kernel; }, get current() { return current; } };
 
 main();

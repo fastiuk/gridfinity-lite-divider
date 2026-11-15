@@ -11,8 +11,10 @@ export const G = {
   rOut: 3.75,      // outer corner radius
   baseTop: 4.75,   // top of the foot profile (0.8 + 1.8 + 2.15)
   stdFloor: 7,     // floor of a standard (solid) base
-  lipTrunc: 0.4,   // flat on top of the lip instead of a knife edge
-  stackGap: 0.6,   // dividers and label shelves stop this far below the rim when a lip is present
+  rimR: 0.6,       // round on top of the lip
+  tabAngle: 36,    // label tab underside, degrees from horizontal
+  tabDepth: 14.2,  // label tab depth from the face it hangs on
+  tabFront: 1.2,   // height of the label tab's front face
   magnetDepth: 2.4,
   screwD: 3.0,
   screwDepth: 6.0,
@@ -23,10 +25,16 @@ export const LIP_STYLES = ['standard', 'thin', 'ultrathin', 'none'];
 
 export const DEFAULTS = Object.freeze({
   ux: 2, uy: 2, uz: 6, lite: true, cx: 3, cy: 2,
-  lipStyle: 'thin', label: false, labelRows: false, scoop: false, gridTall: false,
+  lipStyle: 'thin', label: false, labelRows: false, scoop: false,
   magnets: false, screws: false, magD: 6.5,
   wall: 1.0, floor: 0.8, divT: 1.2, divLower: 0, scoopR: 0, fillet: 2,
 });
+
+// The lip's rim is a round tangent to the outer wall and to the top 45° chamfer (which would
+// reach the outer face at H + 4.4). It stops 15° short of its top, leaving a ~0.3 mm flat.
+const RIM_PHI = (15 * Math.PI) / 180;
+const rimCentre = (H) => H + 4.4 - G.rimR - G.rimR * Math.SQRT2;
+const rimTop = (H) => rimCentre(H) + G.rimR * Math.cos(RIM_PHI);
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
@@ -42,11 +50,12 @@ export function sanitize(input) {
   // Older saved settings had a boolean `lip`.
   if (input && input.lipStyle === undefined && input.lip === false) P.lipStyle = 'none';
   delete P.lip;
+  delete P.gridTall;   // option removed in v0.6
   if (!LIP_STYLES.includes(P.lipStyle)) P.lipStyle = DEFAULTS.lipStyle;
   P.ux = clamp(Math.round(n(P.ux, DEFAULTS.ux)), 1, 10);
   P.uy = clamp(Math.round(n(P.uy, DEFAULTS.uy)), 1, 10);
   P.uz = clamp(Math.round(n(P.uz, DEFAULTS.uz)), 1, 20);
-  for (const k of ['lite', 'label', 'labelRows', 'scoop', 'gridTall', 'magnets', 'screws']) P[k] = !!P[k];
+  for (const k of ['lite', 'label', 'labelRows', 'scoop', 'magnets', 'screws']) P[k] = !!P[k];
   P.fillet = clamp(n(P.fillet, DEFAULTS.fillet), 0, 5);
   P.magD = clamp(n(P.magD, DEFAULTS.magD), 3, 10);
   P.wall = clamp(n(P.wall, DEFAULTS.wall), 0.6, 1.8);
@@ -60,57 +69,25 @@ export function sanitize(input) {
 }
 
 export function outerSize(P) {
+  const H = G.hu * P.uz;
   return {
     W: G.grid * P.ux - G.gap,
     L: G.grid * P.uy - G.gap,
-    H: G.hu * P.uz,
-    lipH: P.lipStyle === 'none' ? 0 : 2.5 + 1.9 - G.lipTrunc,
+    H,
+    lipH: P.lipStyle === 'none' ? 0 : rimTop(H) - H,
   };
 }
 
-// Top of dividers and label shelves. With a lip, a stacked bin's feet reach about 0.35 mm
-// below the rim, so everything inside stops 0.6 mm below it.
+// Dividers and label tabs end at the nominal height H, level with where the lip starts
+// (as in gridfinity-rebuilt); a stacked bin rests on them.
 export function dividerTop(P) {
-  return G.hu * P.uz - (P.lipStyle === 'none' ? 0 : G.stackGap) - P.divLower;
+  return G.hu * P.uz - P.divLower;
 }
 
 export function compartmentSize(P) {
   const { W, L } = outerSize(P);
   const Wi = W - 2 * P.wall, Li = L - 2 * P.wall;
   return [(Wi - (P.cx - 1) * P.divT) / P.cx, (Li - (P.cy - 1) * P.divT) / P.cy];
-}
-
-// Where the dividers are and how high each one may go.
-// A stacked bin rests 0.35 mm below the rim (H) and its feet leave a groove over every grid line:
-// 0.25 mm of clearance plus the foot inset on each side. A divider that sits on a grid line can
-// rise into that groove, up to the top of the lip's straight band (H + 2.5), or to the start of
-// the chamfer for the ultra-thin lip, keeping at least 0.5 mm from the feet.
-// `top` is that raised height, or null for a divider that stays at dividerTop().
-export function dividerLayout(P) {
-  const { W, L, H } = outerSize(P);
-  const Wi = W - 2 * P.wall, Li = L - 2 * P.wall;
-  const [cw, cl] = compartmentSize(P);
-  const zTop = dividerTop(P);
-  const target = P.lipStyle === 'ultrathin' ? H + 4.4 - P.wall : H + 2.5;
-  const raised = (pos, units) => {
-    if (P.lipStyle === 'none' || !P.gridTall) return null;
-    let off = Infinity;
-    for (let k = 1; k < units; k++) off = Math.min(off, Math.abs(pos - (k - units / 2) * G.grid));
-    const half = P.divT / 2 + off;
-    if (half > 1.9) return null;
-    const z = Math.min(target, H + 4.4 - half - 0.25) - P.divLower;
-    return z > zTop + 0.5 ? z : null;
-  };
-  const xs = [], ys = [];
-  for (let i = 1; i < P.cx; i++) {
-    const x = -Wi / 2 + i * cw + (i - 0.5) * P.divT;
-    xs.push({ pos: x, top: raised(x, P.ux) });
-  }
-  for (let j = 1; j < P.cy; j++) {
-    const y = -Li / 2 + j * cl + (j - 0.5) * P.divT;
-    ys.push({ pos: y, top: raised(y, P.uy) });
-  }
-  return { xs, ys, zTop };
 }
 
 // Inset of the foot outline from the 41.5 mm cell outline at height z (45° / vertical / 45°).
@@ -122,64 +99,69 @@ function footInset(z) {
 }
 
 // Inset of the bin's inner wall from the outer outline at height z, including the stacking lip.
-// A stacked bin rests on the top chamfer in every style, so it sits at the same height.
-//  standard:  two levels: 1.9 chamfer, 1.8 band, 0.7 chamfer to a ledge at 2.6, 45° support below
-//  thin:      one level: 1.9 chamfer, 1.8 band, then straight back to the wall at 45°
-//  ultrathin: the wall goes straight up; only the top of the chamfer above the wall is kept
+// The profiles follow gridfinity-rebuilt: everything is either level or rounded.
+//  standard:  1.9 chamfer, 1.8 band at 1.9, 0.7 chamfer to a ledge at 2.6 that starts at H and
+//             runs 1.2 mm down, then a 45° support and a fillet into the wall
+//  thin:      one level: 1.9 chamfer, then the band at 1.9 straight down to H, then the same
+//             45° support and fillet into the wall (no ledge)
+//  ultrathin: the wall goes straight up; only the top chamfer and the rim are kept
+// All of them end in the rounded rim. Dividers and label tabs stop at H, level with where the
+// lip starts.
 function bodyProfile(P, H) {
   const w = P.wall;
   if (P.lipStyle === 'none') return { fn: () => w, breaks: [], top: H };
-  const T = H + 2.5 + 1.9 - G.lipTrunc;          // truncated lip top
-  if (P.lipStyle === 'ultrathin') {
-    const zc = H + 4.4 - w;                      // where the top chamfer meets the wall
-    const fn = (z) => (z <= zc ? w : Math.max(G.lipTrunc, 1.9 - (z - H - 2.5)));
-    return { fn, breaks: [zc, T], top: T };
-  }
-  if (P.lipStyle === 'thin') {
-    const zb = H + 0.7 - (1.9 - w);              // where the 45° slope under the band meets the wall
-    const fn = (z) => {
-      if (z <= zb) return w;
-      if (z <= H + 0.7) return w + (z - zb);
-      if (z <= H + 2.5) return 1.9;
-      if (z <= T) return 1.9 - (z - H - 2.5);
-      return G.lipTrunc;
-    };
-    return { fn, breaks: [zb, H + 0.7, H + 2.5, T], top: T };
-  }
-  const zs = H - (2.6 - w);                      // start of the 45° support under the lip
-  const fn = (z) => {
-    if (z <= zs) return w;
-    if (z <= H) return w + (z - zs);
-    if (z <= H + 0.7) return 2.6 - (z - H);
-    if (z <= H + 2.5) return 1.9;
-    if (z <= T) return 1.9 - (z - H - 2.5);
-    return G.lipTrunc;
-  };
-  return { fn, breaks: [zs, H, H + 0.7, H + 2.5, T], top: T };
-}
 
-// Surface along which dividers and the back-wall label shelf meet the lip: inset from the outer
-// outline at height z. Below the lip it is a 45° ramp 0.25 mm inside the lower chamfer of a
-// stacked bin's foot. It then never moves back toward the wall and up again: wherever the lip
-// reaches further in higher up (the ledge of the standard lip, the band of the thin lip), the
-// surface goes straight up to it, so there is no groove under the lip. `cap` limits the ramp.
-function lipFill(P, H, cap) {
-  const w = P.wall;
-  const T = H + 2.5 + 1.9 - G.lipTrunc;
-  const zc = H + 4.4 - w;
-  const chamfer = (z) => Math.max(G.lipTrunc, 1.9 - (z - H - 2.5));
-  const plateau = (z) => {
+  const R = G.rimR, c = rimCentre(H), top = rimTop(H);
+  const zt = c + R * Math.SQRT1_2;                          // chamfer meets the rim round
+  const rim = (z) => {
+    if (z <= zt) return H + 4.4 - z;                        // top 45° chamfer
+    if (z >= top) return R + R * Math.sin(RIM_PHI);
+    return R + Math.sqrt(Math.max(0, R * R - (z - c) ** 2));
+  };
+  const rimBreaks = [zt, ...[37.5, 30, 22.5].map((d) => c + R * Math.cos((d * Math.PI) / 180)), top];
+
+  if (P.lipStyle === 'ultrathin') {
+    const fn = (z) => Math.min(w, rim(z));
+    const cross = w >= R + R * Math.SQRT1_2 ? H + 4.4 - w : c + Math.sqrt(Math.max(0, R * R - (w - R) ** 2));
+    return { fn, breaks: [cross, ...rimBreaks], top };
+  }
+
+  // Support under the lip: from (eT, zT) down at 45°, then a fillet into the wall.
+  const [eT, zT] = P.lipStyle === 'standard' ? [2.6, H - 1.2] : [1.9, H];
+  const rs = Math.max(0, Math.min(P.fillet, (eT - w) / (1 - Math.SQRT1_2) - 0.01));
+  const eAE = w + rs * (1 - Math.SQRT1_2);                 // fillet meets the 45° line
+  const zAE = zT - (eT - eAE);
+  const zAS = zAE - rs * Math.SQRT1_2;                      // fillet leaves the wall
+  const support = (z) => {
+    if (z <= zAS) return w;
+    if (z <= zAE) return w + rs - Math.sqrt(Math.max(0, rs * rs - (z - zAS) ** 2));
+    return eAE + (z - zAE);
+  };
+  const filletBreaks = [0, 15, 30].map((d) => zAS + rs * Math.sin((d * Math.PI) / 180));
+
+  const fn = (z) => {
+    if (z <= zT) return support(z);
     if (P.lipStyle === 'standard') {
       if (z <= H) return 2.6;
       if (z <= H + 0.7) return 2.6 - (z - H);
-      return z <= H + 2.5 ? 1.9 : chamfer(z);
     }
-    if (P.lipStyle === 'thin') return z <= H + 2.5 ? 1.9 : chamfer(z);
-    return z <= zc ? w : chamfer(z);                     // ultra-thin
+    if (z <= H + 2.5) return 1.9;
+    return rim(z);
   };
-  const fn = (z) => Math.max(Math.min(cap, H + 2.35 - z), plateau(z));
-  const breaks = [H + 2.35 - cap, H - 0.25, H, H + 0.45, H + 0.7, H + 2.35 - w, H + 2.5, zc, T];
-  return { fn, breaks, top: T };
+  const breaks = [...filletBreaks, zAE, zT, H, H + 0.7, H + 2.5, ...rimBreaks];
+  return { fn, breaks, top };
+}
+
+// Outer shell: straight up to the rim, then the rim round.
+function shellProfile(P, H) {
+  if (P.lipStyle === 'none') return [[G.baseTop, 0], [H, 0]];
+  const R = G.rimR, c = rimCentre(H);
+  const prof = [[G.baseTop, 0], [c, 0]];
+  for (const d of [70, 50, 30, 15]) {
+    const a = (d * Math.PI) / 180;
+    prof.push([c + R * Math.cos(a), R - R * Math.sin(a)]);
+  }
+  return prof;
 }
 
 function sampleProfile(fn, z0, z1, breaks) {
@@ -241,7 +223,7 @@ export function buildBin(M, P) {
     // ---- outer solid: one foot per grid cell plus the straight body
     const foot = loft([[0, 2.95], [0.8, 2.15], [2.6, 2.15], [G.baseTop, 0]], 0, 0, cell, cell);
     const feet = centers.map(([x, y]) => keep(foot.translate([x, y, 0])));
-    const shell = loft([[G.baseTop, 0], [topZ, 0]], 0, 0, W, L);
+    const shell = loft(shellProfile(P, H), 0, 0, W, L);
     const outer = unionAll([...feet, shell]);
 
     // ---- cavity
@@ -265,15 +247,12 @@ export function buildBin(M, P) {
     }
 
     // ---- compartments and dividers
-    // The cavity is limited to one tall rounded box per compartment plus an "open" region above
-    // the dividers. The gaps between boxes are the dividers; the boxes' rounded vertical edges
-    // are the fillets in the corners, their rounded bottom edges the fillets at the floor.
-    // The open region starts at the divider top, rises at 45° next to the walls (so dividers run
-    // into the lip) and leaves out the raised dividers together with their corners. Because the
-    // boxes go all the way up, every fillet runs to the top of the divider it belongs to.
+    // Below the divider top the cavity is limited to one rounded box per compartment; the gaps
+    // between boxes are the dividers. The boxes' rounded vertical edges are the fillets in the
+    // corners, their rounded bottom edges the fillets at the floor. The boxes go all the way up,
+    // so near the walls they also meet the support under the lip with rounded corners.
     const Wi = W - 2 * P.wall, Li = L - 2 * P.wall;
-    const layout = dividerLayout(P);
-    const zTop = layout.zTop;
+    const zTop = dividerTop(P);
     const [cw, cl] = compartmentSize(P);
     const rowFront = (j) => -Li / 2 + j * (cl + P.divT);
     const colLeft = (i) => -Wi / 2 + i * (cw + P.divT);
@@ -299,41 +278,7 @@ export function buildBin(M, P) {
         }
       }
 
-      let open;
-      if (P.lipStyle !== 'none') {
-        // Next to the walls the divider top follows lipFill() up into the lip.
-        const fill = lipFill(P, H, Math.min(W, L) / 2 - 0.5);
-        open = loft(sampleProfile(fill.fn, zTop, topZ + 2, fill.breaks), 0, 0, W, L);
-      } else {
-        open = keep(keep(M.cube([W + 4, L + 4, topZ + 2 - zTop], false)).translate([-W / 2 - 2, -L / 2 - 2, zTop]));
-      }
-
-      // Raised dividers stay solid up to their own top, and so do the corners next to them
-      // (at the walls and where two raised dividers cross), so their fillets go up with them.
-      const t2 = P.divT / 2, pad = (rounded ? r : 0) + 0.3;
-      const block = (x0, y0, x1, y1, z1) =>
-        keep(keep(M.cube([x1 - x0, y1 - y0, z1 - zTop + 1], false)).translate([x0, y0, zTop - 1]));
-      const zones = [];
-      for (const d of layout.xs) {
-        if (!d.top) continue;
-        zones.push(block(d.pos - t2, -L / 2 - 1, d.pos + t2, L / 2 + 1, d.top));
-        zones.push(block(d.pos - t2 - pad, -L / 2 - 1, d.pos + t2 + pad, -Li / 2 + pad, d.top));
-        zones.push(block(d.pos - t2 - pad, Li / 2 - pad, d.pos + t2 + pad, L / 2 + 1, d.top));
-      }
-      for (const d of layout.ys) {
-        if (!d.top) continue;
-        zones.push(block(-W / 2 - 1, d.pos - t2, W / 2 + 1, d.pos + t2, d.top));
-        zones.push(block(-W / 2 - 1, d.pos - t2 - pad, -Wi / 2 + pad, d.pos + t2 + pad, d.top));
-        zones.push(block(Wi / 2 - pad, d.pos - t2 - pad, W / 2 + 1, d.pos + t2 + pad, d.top));
-      }
-      for (const a of layout.xs) {
-        for (const b of layout.ys) {
-          if (a.top && b.top) {
-            zones.push(block(a.pos - t2 - pad, b.pos - t2 - pad, a.pos + t2 + pad, b.pos + t2 + pad, Math.min(a.top, b.top)));
-          }
-        }
-      }
-      if (zones.length) open = keep(open.subtract(unionAll(zones)));
+      const open = keep(keep(M.cube([W + 4, L + 4, topZ + 2 - zTop], false)).translate([-W / 2 - 2, -L / 2 - 2, zTop]));
       cavity = keep(cavity.intersect(unionAll([...boxes, open])));
     }
 
@@ -354,31 +299,38 @@ export function buildBin(M, P) {
       }
     }
 
+    // Label tab, shaped as in gridfinity-rebuilt: flat top level with the divider top, a short
+    // vertical front, an underside at 36° and a fillet where it meets the face it hangs on.
     if (P.label) {
-      const tip = 0.6;
-      const Lt = Math.min(12, cl * 0.5, zTop - zFloor - tip - 2);
+      const tan = Math.tan((G.tabAngle * Math.PI) / 180);
+      const front = G.tabFront;
+      const Lt = Math.min(G.tabDepth, cl * 0.6, (zTop - front - zFloor - 1.5) / tan);
       if (Lt >= 3) {
         const rows = P.labelRows ? [...Array(P.cy).keys()] : [P.cy - 1];
+        const xa = -Wi / 2 - 0.5, xb = Wi / 2 + 0.5;
+        const rf = Math.min(P.fillet, Lt * 0.4);
         for (const j of rows) {
-          const y1 = rowFront(j) + cl;
-          const prof = [[y1 + 0.5, zTop], [y1 - Lt, zTop], [y1 - Lt, zTop - tip], [y1 + 0.5, zTop - tip - Lt - 0.5]];
+          const y1 = rowFront(j) + cl;                 // back face of the row (wall or divider)
+          const zK = zTop - front - Lt * tan;          // underside meets the back face
+          const prof = [[y1 + 0.5, zTop], [y1 - Lt, zTop], [y1 - Lt, zTop - front], [y1, zK], [y1 + 0.5, zK]];
           const pts = [];
-          for (const [y, z] of prof) pts.push([-Wi / 2 - 0.5, y, z], [Wi / 2 + 0.5, y, z]);
+          for (const [y, z] of prof) pts.push([xa, y, z], [xb, y, z]);
           adds.push(keep(M.hull(pts)));
-        }
-        // The shelf at the back wall meets the lip along the same surface as the dividers,
-        // over its whole width, so the dividers' ramps become part of it.
-        if (P.lipStyle !== 'none' && rows.includes(P.cy - 1)) {
-          const fill = lipFill(P, H, P.wall + Lt);
-          const prof = [[zTop - 0.3, fill.fn(zTop)], ...sampleProfile(fill.fn, zTop, fill.top, fill.breaks)];
-          for (let k = 0; k < prof.length - 1; k++) {
-            const [z0, e0] = prof[k], [z1, e1] = prof[k + 1];
-            if (z1 - z0 < 1e-6) continue;
-            const pts = [];
-            for (const [e, z] of [[0.3, z0], [e0, z0], [e1, z1], [0.3, z1]]) {
-              pts.push([-Wi / 2 - 0.5, L / 2 - e, z], [Wi / 2 + 0.5, L / 2 - e, z]);
-            }
-            adds.push(keep(M.hull(pts)));
+          if (rf >= 0.2) {
+            // fillet in the (90° + angle) corner between the underside and the back face
+            const half = ((90 + G.tabAngle) / 2) * (Math.PI / 180);
+            const t = rf / Math.tan(half), d = rf / Math.sin(half);
+            const a = (G.tabAngle * Math.PI) / 180;
+            const u1 = [-Math.cos(a), Math.sin(a)];    // along the underside, toward the tip
+            const bl = Math.hypot(u1[0], u1[1] - 1);
+            const bis = [u1[0] / bl, (u1[1] - 1) / bl];
+            const T1 = [y1, zK - t], T2 = [y1 + t * u1[0], zK + t * u1[1]];
+            const C = [y1 + d * bis[0], zK + d * bis[1]];
+            const wpts = [];
+            for (const [y, z] of [[y1 + 0.3, zK], T1, [y1 + 0.3, T1[1]], T2, [y1, zK]]) wpts.push([xa, y, z], [xb, y, z]);
+            const web = keep(M.hull(wpts));
+            const cyl = keep(keep(keep(M.cylinder(xb - xa + 2, rf, rf, 48, true)).rotate([0, 90, 0])).translate([0, C[0], C[1]]));
+            adds.push(keep(web.subtract(cyl)));
           }
         }
       }

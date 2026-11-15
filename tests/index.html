@@ -22,7 +22,7 @@
 </table>
 <script type="module">
 // Serve the repository root (python3 -m http.server 8000) and open http://localhost:8000/tests/
-import { buildBin, dividerLayout, meshPositions, outerSize, sanitize } from '../web/js/geometry.js';
+import { buildBin, meshPositions, outerSize, sanitize } from '../web/js/geometry.js';
 import { binarySTL } from '../web/js/stl.js';
 import { meshToStep } from '../web/js/step.js';
 import { loadKernel } from '../web/js/kernel.js';
@@ -55,12 +55,13 @@ const CASES = [
   { ux: 2, uy: 2, cx: 2, cy: 2 },
   { ux: 3, uy: 2, cx: 3, cy: 2, lipStyle: 'thin' },
   { cx: 2, cy: 2, lipStyle: 'ultrathin' },
-  { cx: 2, cy: 2, gridTall: false },
+  { cx: 2, cy: 2, lipStyle: 'standard', label: true, labelRows: true },
   { divLower: 8 },
   { divT: 4, cx: 2, cy: 2 },
-  { gridTall: true, cx: 2, cy: 2, label: true, lipStyle: 'standard' },
-  { gridTall: true, ux: 3, uy: 3, cx: 3, cy: 3, label: true, labelRows: true },
-  { divLower: 8, label: true, gridTall: true },
+  { ux: 3, uy: 3, cx: 3, cy: 3, label: true, labelRows: true },
+  { divLower: 8, label: true },
+  { cx: 1, cy: 1, lipStyle: 'standard' },
+  { cx: 1, cy: 1, lipStyle: 'ultrathin', lite: false },
   { fillet: 5, label: true, scoop: true },
 ];
 
@@ -93,15 +94,19 @@ for (const c of CASES) {
     const { W, L, H, lipH } = outerSize(P);
     const m = new kernel.Manifold(r.mesh);
     const bb = m.boundingBox();
-    // Stacking: the same bin on top (it rests 0.35 mm below the rim; 0.3 keeps clear of the
-    // contact faces the spec allows) must not overlap anything in the lower bin.
+    // Stacking: the same bin on top must not overlap anything in the lower bin. It rests on the
+    // dividers and label tabs at H; with none of them it sinks onto the lip's chamfers, 0.35 mm
+    // lower (0.3 here keeps clear of the contact faces the spec allows).
     if (P.lipStyle !== 'none') {
-      const up = m.translate([0, 0, H - 0.3]);
-      const inter = m.intersect(up);
-      const overlap = inter.volume();
-      up.delete();
-      inter.delete();
-      if (overlap > 1e-3) { ok = false; notes.push(`stacked bin overlaps ${overlap.toFixed(3)} mm³`); }
+      const empty = P.cx === 1 && P.cy === 1 && !P.label;
+      for (const dz of empty ? [H + 0.01, H - 0.3] : [H + 0.01]) {
+        const up = m.translate([0, 0, dz]);
+        const inter = m.intersect(up);
+        const overlap = inter.volume();
+        up.delete();
+        inter.delete();
+        if (overlap > 1e-3) { ok = false; notes.push(`stacked bin at H${dz >= H ? '+' : ''}${(dz - H).toFixed(2)} overlaps ${overlap.toFixed(3)} mm³`); }
+      }
     }
     m.delete();
     const exp = [[-W / 2, -L / 2, 0], [W / 2, L / 2, H + lipH]];
@@ -115,8 +120,6 @@ for (const c of CASES) {
     const euler = s.vertices - s.edges + s.faces - s.innerLoops;
     if (euler !== 2) { ok = false; notes.push(`STEP Euler ${euler}`); }
     notes.push(`STEP ${s.faces} faces`);
-    const raised = [...dividerLayout(P).xs, ...dividerLayout(P).ys].filter((d) => d.top).length;
-    if (raised) notes.push(`${raised} raised divider(s)`);
     volumes[JSON.stringify({ ...c, lite: undefined })] ??= {};
     volumes[JSON.stringify({ ...c, lite: undefined })][P.lite ? 'lite' : 'std'] = r.volume;
   } catch (e) {
