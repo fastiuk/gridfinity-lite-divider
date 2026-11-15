@@ -87,7 +87,17 @@
 
       <section class="group" aria-labelledby="h-feat">
         <h2 id="h-feat" data-i18n="features"></h2>
-        <label class="check"><input type="checkbox" id="lip"><span data-i18n="lip"></span></label>
+        <span id="lip-label" data-i18n="lip"></span>
+        <div class="seg three" role="radiogroup" aria-labelledby="lip-label">
+          <label><input type="radio" name="lip" id="lip-standard" value="standard"><strong data-i18n="lipStd"></strong></label>
+          <label><input type="radio" name="lip" id="lip-thin" value="thin"><strong data-i18n="lipThin"></strong></label>
+          <label><input type="radio" name="lip" id="lip-none" value="none"><strong data-i18n="lipNone"></strong></label>
+        </div>
+        <p class="hint" id="lip-hint"></p>
+        <div class="field">
+          <label for="fillet" data-i18n="fillet"></label>
+          <input class="num" id="fillet" type="number" min="0" max="5" step="0.5" inputmode="decimal">
+        </div>
         <label class="check"><input type="checkbox" id="label"><span data-i18n="label"></span></label>
         <label class="check indent" id="labelRows-wrap"><input type="checkbox" id="labelRows"><span data-i18n="labelRows"></span></label>
         <label class="check"><input type="checkbox" id="scoop"><span data-i18n="scoop"></span></label>

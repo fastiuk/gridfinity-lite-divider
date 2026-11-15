@@ -32,6 +32,13 @@ const CASES = [
   { lite: false },
   { lite: false, magnets: true, screws: true, scoop: true },
   { scoop: true, labelRows: true },
+  { lipStyle: 'none' },
+  { lipStyle: 'thin' },
+  { lipStyle: 'thin', lite: false, scoop: true },
+  { fillet: 0 },
+  { fillet: 0, cx: 1, cy: 1, lite: false },
+  { fillet: 5, cx: 1, cy: 1, lite: false },
+  { ux: 2, uy: 2, cx: 8, cy: 8, fillet: 5 },
   { lip: false },
   { ux: 1, uy: 1, uz: 3, cx: 1, cy: 1 },
   { ux: 1, uy: 1, uz: 1, cx: 1, cy: 1 },
@@ -90,13 +97,18 @@ for (const c of CASES) {
   add([JSON.stringify(c), ok ? 'PASS' : 'FAIL', ms, vol, tris, notes.join('; ')], ok);
 }
 
+// A saved setting from v0.1.0 ({ lip: false }) must still mean "no lip".
+const legacy = sanitize({ lip: false }).lipStyle === 'none';
+add(['legacy { lip: false } → lipStyle "none"', legacy ? 'PASS' : 'FAIL', '', '', '', ''], legacy);
+if (!legacy) failed++;
+
 // The lite base must use less plastic than the standard one for the same bin.
 const pair = volumes[JSON.stringify({})];
 const liteLighter = pair && pair.lite < pair.std;
 add(['lite volume < standard volume (2×2×6)', liteLighter ? 'PASS' : 'FAIL', '', pair ? `${(pair.lite / 1000).toFixed(2)} vs ${(pair.std / 1000).toFixed(2)}` : '', '', ''], liteLighter);
 if (!liteLighter) failed++;
 
-document.getElementById('summary').textContent = failed ? `${failed} failed` : `All ${CASES.length + 1} checks passed`;
+document.getElementById("summary").textContent = failed ? `${failed} failed` : `All ${CASES.length + 2} checks passed`;
 document.title = (failed ? 'FAIL' : 'PASS') + ' · geometry tests';
 window.testResult = { failed };
 </script>

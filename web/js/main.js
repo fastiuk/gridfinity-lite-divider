@@ -6,8 +6,8 @@ import { fmt, getLang, setLang, t } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 const INTS = ['ux', 'uy', 'uz', 'cx', 'cy'];
-const FLOATS = ['magD', 'wall', 'floor', 'divT', 'divLower', 'scoopR'];
-const BOOLS = ['lip', 'label', 'labelRows', 'scoop', 'magnets', 'screws'];
+const FLOATS = ['magD', 'wall', 'floor', 'divT', 'divLower', 'scoopR', 'fillet'];
+const BOOLS = ['label', 'labelRows', 'scoop', 'magnets', 'screws'];
 
 const store = {
   get(k) { try { return JSON.parse(localStorage.getItem('gfld:' + k)); } catch { return null; } },
@@ -28,6 +28,7 @@ function writeForm(P) {
   for (const k of BOOLS) $(k).checked = !!P[k];
   $('base-lite').checked = P.lite;
   $('base-std').checked = !P.lite;
+  $('lip-' + P.lipStyle).checked = true;
 }
 
 function readForm() {
@@ -35,6 +36,8 @@ function readForm() {
   for (const k of [...INTS, ...FLOATS]) raw[k] = parseFloat(String($(k).value).replace(',', '.'));
   for (const k of BOOLS) raw[k] = $(k).checked;
   raw.lite = $('base-lite').checked;
+  const lip = document.querySelector('input[name="lip"]:checked');
+  raw.lipStyle = lip ? lip.value : DEFAULTS.lipStyle;
   return sanitize(raw);
 }
 
@@ -51,9 +54,10 @@ function refreshLabels() {
   const { W, L, H, lipH } = outerSize(P);
   $('ux-sub').textContent = t('unitW', { u: P.ux, mm: fmt(W) });
   $('uy-sub').textContent = t('unitW', { u: P.uy, mm: fmt(L) });
-  $('uz-sub').textContent = P.lip
+  $('uz-sub').textContent = lipH
     ? t('unitHLip', { u: P.uz, mm: fmt(H, 0), lip: fmt(lipH) })
     : t('unitH', { u: P.uz, mm: fmt(H, 0) });
+  $('lip-hint').textContent = t({ standard: 'lipStdHint', thin: 'lipThinHint', none: 'lipNoneHint' }[P.lipStyle]);
   $('base-hint').textContent = P.lite ? t('liteHint') : t('stdHint');
   $('std-only').hidden = P.lite;
   $('floor-wrap').hidden = !P.lite;

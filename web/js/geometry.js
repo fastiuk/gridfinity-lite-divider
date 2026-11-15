@@ -19,11 +19,13 @@ export const G = {
   holeOffset: 13,  // magnet / screw holes sit 13 mm from the cell centre in X and Y
 };
 
+export const LIP_STYLES = ['standard', 'thin', 'none'];
+
 export const DEFAULTS = Object.freeze({
   ux: 2, uy: 2, uz: 6, lite: true, cx: 3, cy: 2,
-  lip: true, label: true, labelRows: false, scoop: false,
+  lipStyle: 'standard', label: true, labelRows: false, scoop: false,
   magnets: true, screws: false, magD: 6.5,
-  wall: 1.0, floor: 0.8, divT: 1.2, divLower: 0, scoopR: 0,
+  wall: 1.0, floor: 0.8, divT: 1.2, divLower: 0, scoopR: 0, fillet: 2,
 });
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -37,10 +39,15 @@ export function maxComp(units, wall) {
 export function sanitize(input) {
   const P = { ...DEFAULTS, ...input };
   const n = (v, d) => (Number.isFinite(+v) ? +v : d);
+  // Older saved settings had a boolean `lip`.
+  if (input && input.lipStyle === undefined && input.lip === false) P.lipStyle = 'none';
+  delete P.lip;
+  if (!LIP_STYLES.includes(P.lipStyle)) P.lipStyle = DEFAULTS.lipStyle;
   P.ux = clamp(Math.round(n(P.ux, DEFAULTS.ux)), 1, 10);
   P.uy = clamp(Math.round(n(P.uy, DEFAULTS.uy)), 1, 10);
   P.uz = clamp(Math.round(n(P.uz, DEFAULTS.uz)), 1, 20);
-  for (const k of ['lite', 'lip', 'label', 'labelRows', 'scoop', 'magnets', 'screws']) P[k] = !!P[k];
+  for (const k of ['lite', 'label', 'labelRows', 'scoop', 'magnets', 'screws']) P[k] = !!P[k];
+  P.fillet = clamp(n(P.fillet, DEFAULTS.fillet), 0, 5);
   P.magD = clamp(n(P.magD, DEFAULTS.magD), 3, 10);
   P.wall = clamp(n(P.wall, DEFAULTS.wall), 0.6, 1.8);
   P.floor = clamp(n(P.floor, DEFAULTS.floor), 0.4, 2);
@@ -57,8 +64,14 @@ export function outerSize(P) {
     W: G.grid * P.ux - G.gap,
     L: G.grid * P.uy - G.gap,
     H: G.hu * P.uz,
-    lipH: P.lip ? 2.5 + 1.9 - G.lipTrunc : 0,
+    lipH: P.lipStyle === 'none' ? 0 : 2.5 + 1.9 - G.lipTrunc,
   };
+}
+
+// Top of dividers and label shelves. With a lip, a stacked bin's feet reach about 0.35 mm
+// below the rim, so everything inside stops 0.6 mm below it.
+export function dividerTop(P) {
+  return G.hu * P.uz - (P.lipStyle === 'none' ? 0 : G.stackGap) - P.divLower;
 }
 
 export function compartmentSize(P) {
@@ -76,11 +89,19 @@ function footInset(z) {
 }
 
 // Inset of the bin's inner wall from the outer outline at height z, including the stacking lip.
+//  standard: 0.7 / 1.8 / 1.9 mm lip profile with a 45° ledge under it
+//  thin:     the wall goes straight up; only the top 45° chamfer of the lip is kept. A stacked
+//            bin rests on that chamfer, so it sits at the same height as on a standard lip.
 function bodyProfile(P, H) {
   const w = P.wall;
-  if (!P.lip) return { fn: () => w, breaks: [], top: H };
-  const zs = H - (2.6 - w);                      // start of the 45° support under the lip
+  if (P.lipStyle === 'none') return { fn: () => w, breaks: [], top: H };
   const T = H + 2.5 + 1.9 - G.lipTrunc;          // truncated lip top
+  if (P.lipStyle === 'thin') {
+    const zc = H + 4.4 - w;                      // where the top chamfer meets the wall
+    const fn = (z) => (z <= zc ? w : Math.max(G.lipTrunc, 1.9 - (z - H - 2.5)));
+    return { fn, breaks: [zc, T], top: T };
+  }
+  const zs = H - (2.6 - w);                      // start of the 45° support under the lip
   const fn = (z) => {
     if (z <= zs) return w;
     if (z <= H) return w + (z - zs);
@@ -97,11 +118,11 @@ function sampleProfile(fn, z0, z1, breaks) {
   return zs.map((z) => [z, fn(z)]);
 }
 
-// Rounded rectangle (outline w × l with corner radius rOut, inset by e) as 3D points at height z.
-function ringPoints(cx, cy, w, l, e, z) {
+// Rounded rectangle (outline w × l with corner radius R, inset by e) as 3D points at height z.
+function ringPoints(cx, cy, w, l, e, z, R = G.rOut, rMin = 0.3) {
   const hx = w / 2 - e, hy = l / 2 - e;
-  let r = Math.min(G.rOut - e, hx - 0.05, hy - 0.05);
-  r = Math.max(r, 0.3);
+  let r = Math.min(R - e, hx - 0.05, hy - 0.05);
+  r = Math.max(r, rMin);
   const seg = r > 2 ? 8 : r > 0.8 ? 5 : 3;
   const pts = [];
   const corners = [[1, 1], [-1, 1], [-1, -1], [1, -1]];
@@ -174,20 +195,42 @@ export function buildBin(M, P) {
       cavity = loft(sampleProfile(body.fn, G.stdFloor, topZ + 1, body.breaks), 0, 0, W, L);
     }
 
-    // ---- solids that go back into the cavity: dividers, scoops, label shelves
+    // ---- compartments: below the divider top the cavity is limited to one rounded box per
+    // compartment, so the gaps between boxes become the dividers. Each box has its vertical
+    // edges and its bottom edges rounded with the fillet radius, which puts fillets where the
+    // floor meets the walls and the dividers, and in the corners between dividers.
     const Wi = W - 2 * P.wall, Li = L - 2 * P.wall;
-    const zTop = H - (P.lip ? G.stackGap : 0) - P.divLower;
+    const zTop = dividerTop(P);
     const [cw, cl] = compartmentSize(P);
-    const adds = [];
-    for (let i = 1; i < P.cx; i++) {
-      const x = -Wi / 2 + i * cw + (i - 0.5) * P.divT;
-      adds.push(keep(keep(M.cube([P.divT, L + 2, zTop + 1], true)).translate([x, 0, (zTop - 1) / 2])));
-    }
-    for (let j = 1; j < P.cy; j++) {
-      const y = -Li / 2 + j * cl + (j - 0.5) * P.divT;
-      adds.push(keep(keep(M.cube([W + 2, P.divT, zTop + 1], true)).translate([0, y, (zTop - 1) / 2])));
-    }
     const rowFront = (j) => -Li / 2 + j * (cl + P.divT);
+    const colLeft = (i) => -Wi / 2 + i * (cw + P.divT);
+    const r = Math.min(P.fillet, cw / 2 - 0.05, cl / 2 - 0.05, (zTop - zFloor) / 2);
+    const rounded = r >= 0.2;
+    if (zTop > zFloor + 0.5 && (P.cx > 1 || P.cy > 1 || rounded)) {
+      const boxes = [];
+      for (let i = 0; i < P.cx; i++) {
+        for (let j = 0; j < P.cy; j++) {
+          const x0 = colLeft(i) + cw / 2, y0 = rowFront(j) + cl / 2;
+          const pts = [];
+          if (rounded) {
+            const N = 6;   // quarter-circle steps of the bottom fillet
+            for (let k = 0; k <= N; k++) {
+              const phi = ((Math.PI / 2) * k) / N;
+              pts.push(...ringPoints(x0, y0, cw, cl, r - r * Math.sin(phi), zFloor + r - r * Math.cos(phi), r, 0.01));
+            }
+          } else {
+            pts.push(...ringPoints(x0, y0, cw, cl, 0, zFloor - 1, 0.01, 0.01));
+          }
+          pts.push(...ringPoints(x0, y0, cw, cl, 0, zTop + 0.5, rounded ? r : 0.01, 0.01));
+          boxes.push(keep(M.hull(pts)));
+        }
+      }
+      const slab = keep(keep(M.cube([W + 4, L + 4, topZ + 2 - zTop], false)).translate([-W / 2 - 2, -L / 2 - 2, zTop]));
+      cavity = keep(cavity.intersect(unionAll([...boxes, slab])));
+    }
+
+    // ---- solids that go back into the cavity: scoops and label shelves
+    const adds = [];
 
     if (P.scoop) {
       const auto = Math.min(cl * 0.5, (zTop - zFloor) * 0.45, 20);
@@ -271,7 +314,8 @@ export function meshPositions(mesh) {
 
 export function fileBase(P) {
   const parts = ['gridfinity', P.lite ? 'lite' : 'std', `${P.ux}x${P.uy}x${P.uz}`, `${P.cx}x${P.cy}comp`];
-  if (P.lip) parts.push('lip');
+  if (P.lipStyle === 'standard') parts.push('lip');
+  if (P.lipStyle === 'thin') parts.push('thinlip');
   if (P.label) parts.push(P.labelRows ? 'labels' : 'label');
   if (P.scoop) parts.push('scoop');
   if (!P.lite && P.magnets) parts.push('mag');

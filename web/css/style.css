@@ -125,6 +125,8 @@ input.num {
 }
 
 .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.seg.three { grid-template-columns: repeat(3, 1fr); }
+.seg.three label { padding: 8px 6px; text-align: center; }
 .seg label {
   position: relative; display: grid; gap: 2px; padding: 9px 11px; cursor: pointer;
   border: 1px solid var(--line); border-radius: 9px; background: var(--bg);
