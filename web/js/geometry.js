@@ -139,8 +139,9 @@ function footInset(z) {
 //  standard:  1.9 chamfer, 1.8 band at 1.9, 0.7 chamfer to a ledge at 2.6 that starts at H and
 //             runs 1.2 mm down, then a 45° support and a fillet into the wall
 //  thin:      one level: 1.9 chamfer, a band at 1.9 of THIN_BAND height, then the same 45°
-//             support and fillet into the wall (no ledge). Where a divider or the back-wall
-//             label tab meets the wall, the band runs straight down to its top instead.
+//             support and fillet into the wall (no ledge). Where a divider or a label tab
+//             meets the wall, the band comes down to its top instead, ending in a 45°
+//             chamfer like the standard lip's ledge.
 //  ultrathin: the wall goes straight up; only the top chamfer and the rim are kept
 // All of them end in the rounded rim. Dividers and label tabs stop at H, level with where the
 // lip starts.
@@ -312,11 +313,13 @@ export function buildBin(M, P) {
         : P.wall) - P.wall);
 
     if (zTop > zFloor + 0.5 && (P.cx > 1 || P.cy > 1 || rounded || tabRows.length)) {
-      // Above the divider top everything is open, except that with the thin lip the band runs
-      // straight down to the top of a divider or label tab where it meets the wall (no groove
-      // under it).
+      // Above the divider top everything is open, except that with the thin lip the band comes
+      // down to the top of a divider or label tab where it meets the wall (no groove under it)
+      // and meets it with a 45° chamfer out to 2.6, the same as the standard lip's ledge.
+      const zC = zTop + 0.7;
       const open0 = P.lipStyle === 'thin'
-        ? loft(sampleProfile((z) => (z <= H + 2.5 ? 1.9 : body.fn(z)), zTop, topZ + 2, body.breaks), 0, 0, W, L)
+        ? loft(sampleProfile((z) => (z < zC ? 1.9 + (zC - z) : z <= H + 2.5 ? 1.9 : body.fn(z)),
+          zTop, topZ + 2, [...body.breaks, zC]), 0, 0, W, L)
         : keep(keep(M.cube([W + 4, L + 4, topZ + 2 - zTop], false)).translate([-W / 2 - 2, -L / 2 - 2, zTop]));
       const boxes = [];
       const rr = rounded ? r : 0.01;
@@ -339,62 +342,29 @@ export function buildBin(M, P) {
             const yB = rowFront(j) + cl;                 // back face of the row (wall or divider)
             const yF = yB - Lt;                          // tab front face
             const zF = zTop - G.tabFront;                // bottom of the front face
-            const zK = zF - Lt * tan;                    // underside meets the back face
-            const lF = yF - rowFront(j);
-            // At the height of the tab's front face the compartment is a shorter rounded box,
-            // which rounds the front face's vertical edges; below that it is the full box.
-            // Next to an outer wall the rounding is taken from where the lip starts (the ledge of
-            // the standard lip, the band of the thin lip), not from the wall face, so it is not
-            // hidden in the lip. Just in front of the tab the box therefore steps in from the
-            // wall to that line along a rounded S-curve.
-            const prism = (cx, cy, w, l, rad) => keep(M.hull([
-              ...ringPoints(cx, cy, w, l, 0, zF - 0.05, rad, 0.01),
-              ...ringPoints(cx, cy, w, l, 0, topZ + 1, rad, 0.01),
-            ]));
-            const dl = i === 0 ? lipIn : 0, dr = i === P.cx - 1 ? lipIn : 0;
-            let shorter;
-            if (P.lipStyle === 'thin' && dl + dr > 0.05 && lF > 3 * rr + (thinBandBottom(H) - zF) + 3) {
-              // Thin lip: the band comes down to the tab corner. In front of the tab it ends
-              // with a 45° underside (like the support under the band) instead of a vertical step.
-              const xL = colLeft(i), xR = xL + cw;
-              const yA = rowFront(j) - 1;
-              const yP = yF - rr;                              // the corner fillet leaves the lip line
-              const yW = yP - (thinBandBottom(H) - zF);        // the 45° underside reaches the band
-              const full = prism((xL + xR) / 2, (yA + yW) / 2, cw, yW - yA, 0.01);
-              const y2 = Math.max(yA, yW - 2 * rr - 1);
-              const inner = prism((xL + dl + xR - dr) / 2, (y2 + yF) / 2, cw - dl - dr, yF - y2, rr);
-              const parts = [full, inner];
-              const wedge = (x0, x1) => {
-                const pts = [];
-                for (const [y, z] of [[yW - 0.05, zF - 0.05], [yW - 0.05, thinBandBottom(H) + 0.05], [yP, zF], [yP, zF - 0.05]]) {
-                  pts.push([x0, y, z], [x1, y, z]);
-                }
-                return keep(M.hull(pts));
-              };
-              if (dl) parts.push(wedge(xL - 1, xL + dl + 0.05));
-              if (dr) parts.push(wedge(xR - dr - 0.05, xR + 1));
-              shorter = unionAll(parts);
-            } else if (dl + dr > 0.05 && lF > 2 * rr + lipIn + 2) {
-              const xL = colLeft(i), xR = xL + cw;
-              const yA = rowFront(j) - 1, yS = yF - rr;  // full-width part ends one radius before the tab
-              const full = prism((xL + xR) / 2, (yA + yS) / 2, cw, yS - yA, lipIn);
-              const y2 = Math.max(yA, yF - rr - lipIn - 2 * rr - 2);
-              const inner = prism((xL + dl + xR - dr) / 2, (y2 + yF) / 2, cw - dl - dr, yF - y2, rr);
-              shorter = keep(full.add(inner));
-            } else {
-              shorter = prism(x0, rowFront(j) + lF / 2, cw, lF, rr);
-            }
-            const frontLow = keep(keep(M.cube([cw + 2, lF + 2, zF - zFloor + 2], false))
-              .translate([x0 - cw / 2 - 1, rowFront(j) - 2, zFloor - 2]));
-            // Space under the tab. It starts 0.05 mm in front of the tab so it overlaps the
-            // parts in front instead of just touching them (no zero-thickness wall between).
+            const yA = rowFront(j) - 2 - rr;             // well in front of the row
+            // The tab's 36° underside is one plane that also runs on forward and up: below it the
+            // compartment is open. In front of the tab that plane is the underside of whatever
+            // closes the corners next to the tab, so nothing there overhangs flat and it prints
+            // like the tab itself.
             const under = [];
-            for (const [y, z] of [[yF - 0.05, zFloor - 2], [yF - 0.05, zF], [yF, zF], [yB + 1, zK - tan], [yB + 1, zFloor - 2]]) {
+            for (const [y, z] of [[yA, zFloor - 2], [yA, zF + (yF - yA) * tan], [yB + 1, zF - (yB + 1 - yF) * tan], [yB + 1, zFloor - 2]]) {
               under.push([x0 - cw / 2 - 1, y, z], [x0 + cw / 2 + 1, y, z]);
             }
+            // Above the plane, in front of the tab: the compartment with its back corners rounded,
+            // which rounds the tab front's vertical edges. Next to an outer wall the rounding is
+            // taken from where the lip starts (the ledge of the standard lip, the band of the thin
+            // lip), not from the wall face, so it is not hidden in the lip; between the wall and
+            // that line the plane closes the space under the lip.
+            const dl = i === 0 ? lipIn : 0, dr = i === P.cx - 1 ? lipIn : 0;
+            const xL = colLeft(i) + dl, xR = colLeft(i) + cw - dr;
+            const front = keep(M.hull([
+              ...ringPoints((xL + xR) / 2, (yA + yF) / 2, xR - xL, yF - yA, 0, zF - 0.05, rr, 0.01),
+              ...ringPoints((xL + xR) / 2, (yA + yF) / 2, xR - xL, yF - yA, 0, topZ + 1, rr, 0.01),
+            ]));
             // Above the tab top: the full box limited like the open region, so the corners there
             // stay rounded too.
-            box = keep(box.intersect(unionAll([keep(M.hull(under)), frontLow, shorter, open0])));
+            box = keep(box.intersect(unionAll([keep(M.hull(under)), front, open0])));
           }
           boxes.push(box);
         }
