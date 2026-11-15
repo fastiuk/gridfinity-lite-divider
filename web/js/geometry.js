@@ -36,6 +36,10 @@ const RIM_PHI = (15 * Math.PI) / 180;
 const rimCentre = (H) => H + 4.4 - G.rimR - G.rimR * Math.SQRT2;
 const rimTop = (H) => rimCentre(H) + G.rimR * Math.cos(RIM_PHI);
 
+// The thin lip's straight band ends at H + 2.5 and is 1.25 mm tall.
+const THIN_BAND = 1.25;
+const thinBandBottom = (H) => H + 2.5 - THIN_BAND;
+
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 // Compartments are at least ~10 mm wide.
@@ -102,8 +106,9 @@ function footInset(z) {
 // The profiles follow gridfinity-rebuilt: everything is either level or rounded.
 //  standard:  1.9 chamfer, 1.8 band at 1.9, 0.7 chamfer to a ledge at 2.6 that starts at H and
 //             runs 1.2 mm down, then a 45° support and a fillet into the wall
-//  thin:      one level: 1.9 chamfer, then the band at 1.9 straight down to H, then the same
-//             45° support and fillet into the wall (no ledge)
+//  thin:      one level: 1.9 chamfer, a band at 1.9 of THIN_BAND height, then the same 45°
+//             support and fillet into the wall (no ledge). Where a divider or the back-wall
+//             label tab meets the wall, the band runs straight down to its top instead.
 //  ultrathin: the wall goes straight up; only the top chamfer and the rim are kept
 // All of them end in the rounded rim. Dividers and label tabs stop at H, level with where the
 // lip starts.
@@ -127,7 +132,7 @@ function bodyProfile(P, H) {
   }
 
   // Support under the lip: from (eT, zT) down at 45°, then a fillet into the wall.
-  const [eT, zT] = P.lipStyle === 'standard' ? [2.6, H - 1.2] : [1.9, H];
+  const [eT, zT] = P.lipStyle === 'standard' ? [2.6, H - 1.2] : [1.9, thinBandBottom(H)];
   const rs = Math.max(0, Math.min(P.fillet, (eT - w) / (1 - Math.SQRT1_2) - 0.01));
   const eAE = w + rs * (1 - Math.SQRT1_2);                 // fillet meets the 45° line
   const zAE = zT - (eT - eAE);
@@ -278,7 +283,11 @@ export function buildBin(M, P) {
         }
       }
 
-      const open = keep(keep(M.cube([W + 4, L + 4, topZ + 2 - zTop], false)).translate([-W / 2 - 2, -L / 2 - 2, zTop]));
+      // Above the divider top everything is open, except that with the thin lip the band runs
+      // straight down to the divider top where a divider meets the wall (no groove under it).
+      const open = P.lipStyle === 'thin'
+        ? loft(sampleProfile((z) => (z <= H + 2.5 ? 1.9 : body.fn(z)), zTop, topZ + 2, body.breaks), 0, 0, W, L)
+        : keep(keep(M.cube([W + 4, L + 4, topZ + 2 - zTop], false)).translate([-W / 2 - 2, -L / 2 - 2, zTop]));
       cavity = keep(cavity.intersect(unionAll([...boxes, open])));
     }
 
@@ -331,6 +340,15 @@ export function buildBin(M, P) {
             const web = keep(M.hull(wpts));
             const cyl = keep(keep(keep(M.cylinder(xb - xa + 2, rf, rf, 48, true)).rotate([0, 90, 0])).translate([0, C[0], C[1]]));
             adds.push(keep(web.subtract(cyl)));
+          }
+        }
+        // With the thin lip, the band runs straight down to the top of the back-wall tab.
+        if (P.lipStyle === 'thin' && rows.includes(P.cy - 1)) {
+          const zB = thinBandBottom(H);
+          if (zB > zTop) {
+            const pts = [];
+            for (const y of [L / 2 - 0.3, L / 2 - 1.9]) for (const z of [zTop - 0.3, zB + 0.05]) pts.push([xa, y, z], [xb, y, z]);
+            adds.push(keep(M.hull(pts)));
           }
         }
       }
