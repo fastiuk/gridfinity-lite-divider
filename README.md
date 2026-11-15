@@ -1,4 +1,4 @@
-[![Сайт](https://img.shields.io/badge/сайт-fastiuk.github.io%2Fgridfinity--lite--divider-2f7d4f?logo=googlechrome&logoColor=white)](https://fastiuk.github.io/gridfinity-lite-divider/)
+[![Сайт](https://img.shields.io/badge/сайт-gridfinity.fastiuk.com-2f7d4f?logo=googlechrome&logoColor=white)](https://gridfinity.fastiuk.com)
 [![GitHub](https://img.shields.io/badge/GitHub-fastiuk%2Fgridfinity--lite--divider-181717?logo=github&logoColor=white)](https://github.com/fastiuk/gridfinity-lite-divider)
 [![Pages](https://img.shields.io/github/actions/workflow/status/fastiuk/gridfinity-lite-divider/pages.yml?branch=main&label=pages&logo=githubactions&logoColor=white)](https://github.com/fastiuk/gridfinity-lite-divider/actions/workflows/pages.yml)
 [![Release](https://img.shields.io/github/v/release/fastiuk/gridfinity-lite-divider?logo=github&logoColor=white)](https://github.com/fastiuk/gridfinity-lite-divider/releases)
@@ -7,7 +7,7 @@
 
 # Gridfinity Lite + Divider
 
-Сайт: **https://fastiuk.github.io/gridfinity-lite-divider/**
+Сайт: **https://gridfinity.fastiuk.com**
 
 Генератор контейнерів [Gridfinity](https://gridfinity.xyz/), у якому легка порожниста основа
 поєднана з перегородками на відсіки. На [gridfinity.bouwens.co](https://gridfinity.bouwens.co/)
