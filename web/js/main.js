@@ -16,7 +16,7 @@ const store = {
 };
 
 // Bumped when the defaults change, so everyone starts from the new defaults once.
-const PARAMS_KEY = 'params-v2';
+const PARAMS_KEY = 'params-v3';
 
 let kernel = null;
 let viewer = null;

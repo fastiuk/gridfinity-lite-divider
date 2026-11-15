@@ -24,7 +24,7 @@ export const G = {
 export const LIP_STYLES = ['standard', 'thin', 'ultrathin', 'none'];
 
 export const DEFAULTS = Object.freeze({
-  ux: 2, uy: 2, uz: 6, lite: true, cx: 3, cy: 2,
+  ux: 2, uy: 2, uz: 6, lite: true, cx: 1, cy: 1,
   lipStyle: 'thin', label: false, labelRows: false, scoop: false, gridTall: false,
   magnets: false, screws: false, magD: 6.5,
   wall: 1.0, floor: 0.8, divT: 1.2, divLower: 0, scoopR: 0, fillet: 2,
@@ -36,8 +36,8 @@ const RIM_PHI = (15 * Math.PI) / 180;
 const rimCentre = (H) => H + 4.4 - G.rimR - G.rimR * Math.SQRT2;
 const rimTop = (H) => rimCentre(H) + G.rimR * Math.cos(RIM_PHI);
 
-// The thin lip's straight band ends at H + 2.5 and is 1.25 mm tall.
-const THIN_BAND = 1.25;
+// The thin lip's straight band ends at H + 2.5 and is 1.8 mm tall, as in the spec profile.
+const THIN_BAND = 1.8;
 const thinBandBottom = (H) => H + 2.5 - THIN_BAND;
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -295,8 +295,18 @@ export function buildBin(M, P) {
     const colLeft = (i) => -Wi / 2 + i * (cw + P.divT);
     const r = Math.min(P.fillet, cw / 2 - 0.05, cl / 2 - 0.05, (zTop - zFloor) / 2);
     const rounded = r >= 0.2;
-    if (zTop > zFloor + 0.5 && (P.cx > 1 || P.cy > 1 || rounded)) {
+
+    // Label tabs, shaped as in gridfinity-rebuilt: flat top level with the divider top, a short
+    // vertical front, an underside at 36° and a fillet where it meets the face it hangs on.
+    // A tab is part of the compartment shape: above its underside the compartment is a shorter
+    // rounded box, so the tab's front meets walls and dividers with the same rounded corners.
+    const tan = Math.tan((G.tabAngle * Math.PI) / 180);
+    const Lt = P.label ? Math.min(G.tabDepth, cl * 0.6, (zTop - G.tabFront - zFloor - 1.5) / tan) : 0;
+    const tabRows = Lt >= 3 ? (P.labelRows ? [...Array(P.cy).keys()] : [P.cy - 1]) : [];
+
+    if (zTop > zFloor + 0.5 && (P.cx > 1 || P.cy > 1 || rounded || tabRows.length)) {
       const boxes = [];
+      const rr = rounded ? r : 0.01;
       for (let i = 0; i < P.cx; i++) {
         for (let j = 0; j < P.cy; j++) {
           const x0 = colLeft(i) + cw / 2, y0 = rowFront(j) + cl / 2;
@@ -310,13 +320,31 @@ export function buildBin(M, P) {
           } else {
             pts.push(...ringPoints(x0, y0, cw, cl, 0, zFloor - 1, 0.01, 0.01));
           }
-          pts.push(...ringPoints(x0, y0, cw, cl, 0, topZ + 1, rounded ? r : 0.01, 0.01));
-          boxes.push(keep(M.hull(pts)));
+          pts.push(...ringPoints(x0, y0, cw, cl, 0, topZ + 1, rr, 0.01));
+          let box = keep(M.hull(pts));
+          if (tabRows.includes(j)) {
+            const yB = rowFront(j) + cl;                 // back face of the row (wall or divider)
+            const yF = yB - Lt;                          // tab front face
+            const zF = zTop - G.tabFront;                // bottom of the front face
+            const zK = zF - Lt * tan;                    // underside meets the back face
+            const lF = yF - rowFront(j);
+            const shorter = keep(M.hull([
+              ...ringPoints(x0, rowFront(j) + lF / 2, cw, lF, 0, zFloor - 1, rr, 0.01),
+              ...ringPoints(x0, rowFront(j) + lF / 2, cw, lF, 0, topZ + 1, rr, 0.01),
+            ]));
+            const under = [];
+            for (const [y, z] of [[yF, zFloor - 2], [yF, zF], [yB + 1, zK - tan], [yB + 1, zFloor - 2]]) {
+              under.push([x0 - cw / 2 - 1, y, z], [x0 + cw / 2 + 1, y, z]);
+            }
+            box = keep(box.intersect(keep(keep(M.hull(under)).add(shorter))));
+          }
+          boxes.push(box);
         }
       }
 
       // Above the divider top everything is open, except that with the thin lip the band runs
-      // straight down to the divider top where a divider meets the wall (no groove under it).
+      // straight down to the top of a divider or label tab where it meets the wall (no groove
+      // under it).
       let open = P.lipStyle === 'thin'
         ? loft(sampleProfile((z) => (z <= H + 2.5 ? 1.9 : body.fn(z)), zTop, topZ + 2, body.breaks), 0, 0, W, L)
         : keep(keep(M.cube([W + 4, L + 4, topZ + 2 - zTop], false)).translate([-W / 2 - 2, -L / 2 - 2, zTop]));
@@ -369,48 +397,28 @@ export function buildBin(M, P) {
       }
     }
 
-    // Label tab, shaped as in gridfinity-rebuilt: flat top level with the divider top, a short
-    // vertical front, an underside at 36° and a fillet where it meets the face it hangs on.
-    if (P.label) {
-      const tan = Math.tan((G.tabAngle * Math.PI) / 180);
-      const front = G.tabFront;
-      const Lt = Math.min(G.tabDepth, cl * 0.6, (zTop - front - zFloor - 1.5) / tan);
-      if (Lt >= 3) {
-        const rows = P.labelRows ? [...Array(P.cy).keys()] : [P.cy - 1];
-        const xa = -Wi / 2 - 0.5, xb = Wi / 2 + 0.5;
-        const rf = Math.min(P.fillet, Lt * 0.4);
-        for (const j of rows) {
-          const y1 = rowFront(j) + cl;                 // back face of the row (wall or divider)
-          const zK = zTop - front - Lt * tan;          // underside meets the back face
-          const prof = [[y1 + 0.5, zTop], [y1 - Lt, zTop], [y1 - Lt, zTop - front], [y1, zK], [y1 + 0.5, zK]];
-          const pts = [];
-          for (const [y, z] of prof) pts.push([xa, y, z], [xb, y, z]);
-          adds.push(keep(M.hull(pts)));
-          if (rf >= 0.2) {
-            // fillet in the (90° + angle) corner between the underside and the back face
-            const half = ((90 + G.tabAngle) / 2) * (Math.PI / 180);
-            const t = rf / Math.tan(half), d = rf / Math.sin(half);
-            const a = (G.tabAngle * Math.PI) / 180;
-            const u1 = [-Math.cos(a), Math.sin(a)];    // along the underside, toward the tip
-            const bl = Math.hypot(u1[0], u1[1] - 1);
-            const bis = [u1[0] / bl, (u1[1] - 1) / bl];
-            const T1 = [y1, zK - t], T2 = [y1 + t * u1[0], zK + t * u1[1]];
-            const C = [y1 + d * bis[0], zK + d * bis[1]];
-            const wpts = [];
-            for (const [y, z] of [[y1 + 0.3, zK], T1, [y1 + 0.3, T1[1]], T2, [y1, zK]]) wpts.push([xa, y, z], [xb, y, z]);
-            const web = keep(M.hull(wpts));
-            const cyl = keep(keep(keep(M.cylinder(xb - xa + 2, rf, rf, 48, true)).rotate([0, 90, 0])).translate([0, C[0], C[1]]));
-            adds.push(keep(web.subtract(cyl)));
-          }
-        }
-        // With the thin lip, the band runs straight down to the top of the back-wall tab.
-        if (P.lipStyle === 'thin' && rows.includes(P.cy - 1)) {
-          const zB = thinBandBottom(H);
-          if (zB > zTop) {
-            const pts = [];
-            for (const y of [L / 2 - 0.3, L / 2 - 1.9]) for (const z of [zTop - 0.3, zB + 0.05]) pts.push([xa, y, z], [xb, y, z]);
-            adds.push(keep(M.hull(pts)));
-          }
+    // Fillet where a label tab's underside meets the face it hangs on.
+    if (tabRows.length) {
+      const xa = -Wi / 2 - 0.5, xb = Wi / 2 + 0.5;
+      const rf = Math.min(P.fillet, Lt * 0.4);
+      for (const j of tabRows) {
+        const y1 = rowFront(j) + cl;                 // back face of the row (wall or divider)
+        const zK = zTop - G.tabFront - Lt * tan;     // underside meets the back face
+        if (rf >= 0.2) {
+          // fillet in the (90° + angle) corner between the underside and the back face
+          const half = ((90 + G.tabAngle) / 2) * (Math.PI / 180);
+          const t = rf / Math.tan(half), d = rf / Math.sin(half);
+          const a = (G.tabAngle * Math.PI) / 180;
+          const u1 = [-Math.cos(a), Math.sin(a)];    // along the underside, toward the tip
+          const bl = Math.hypot(u1[0], u1[1] - 1);
+          const bis = [u1[0] / bl, (u1[1] - 1) / bl];
+          const T1 = [y1, zK - t], T2 = [y1 + t * u1[0], zK + t * u1[1]];
+          const C = [y1 + d * bis[0], zK + d * bis[1]];
+          const wpts = [];
+          for (const [y, z] of [[y1 + 0.3, zK], T1, [y1 + 0.3, T1[1]], T2, [y1, zK]]) wpts.push([xa, y, z], [xb, y, z]);
+          const web = keep(M.hull(wpts));
+          const cyl = keep(keep(keep(M.cylinder(xb - xa + 2, rf, rf, 48, true)).rotate([0, 90, 0])).translate([0, C[0], C[1]]));
+          adds.push(keep(web.subtract(cyl)));
         }
       }
     }
