@@ -137,6 +137,14 @@ export function meshToStep(mesh, name = 'gridfinity') {
         count++;
       }
     }
+    // A face that touches itself at a vertex has no simple boundary loops: write its triangles
+    // as separate faces, which is always valid.
+    let pinched = false;
+    for (const list of out.values()) if (list.length > 1) { pinched = true; break; }
+    if (pinched) {
+      for (const t of members) emitFace([[tv[3 * t], tv[3 * t + 1], tv[3 * t + 2]]], [nx[t], ny[t], nz[t]]);
+      continue;
+    }
     // 2D frame in the face plane, used to pick edges at pinch vertices and to tell holes apart
     const ax = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
     let ex = [ax[1] * n[2] - ax[2] * n[1], ax[2] * n[0] - ax[0] * n[2], ax[0] * n[1] - ax[1] * n[0]];
