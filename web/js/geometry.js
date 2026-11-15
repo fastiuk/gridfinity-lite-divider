@@ -158,6 +158,30 @@ function bodyProfile(P, H) {
   return { fn, breaks: [zs, H, H + 0.7, H + 2.5, T], top: T };
 }
 
+// Surface along which dividers and the back-wall label shelf meet the lip: inset from the outer
+// outline at height z. Below the lip it is a 45° ramp 0.25 mm inside the lower chamfer of a
+// stacked bin's foot. It then never moves back toward the wall and up again: wherever the lip
+// reaches further in higher up (the ledge of the standard lip, the band of the thin lip), the
+// surface goes straight up to it, so there is no groove under the lip. `cap` limits the ramp.
+function lipFill(P, H, cap) {
+  const w = P.wall;
+  const T = H + 2.5 + 1.9 - G.lipTrunc;
+  const zc = H + 4.4 - w;
+  const chamfer = (z) => Math.max(G.lipTrunc, 1.9 - (z - H - 2.5));
+  const plateau = (z) => {
+    if (P.lipStyle === 'standard') {
+      if (z <= H) return 2.6;
+      if (z <= H + 0.7) return 2.6 - (z - H);
+      return z <= H + 2.5 ? 1.9 : chamfer(z);
+    }
+    if (P.lipStyle === 'thin') return z <= H + 2.5 ? 1.9 : chamfer(z);
+    return z <= zc ? w : chamfer(z);                     // ultra-thin
+  };
+  const fn = (z) => Math.max(Math.min(cap, H + 2.35 - z), plateau(z));
+  const breaks = [H + 2.35 - cap, H - 0.25, H, H + 0.45, H + 0.7, H + 2.35 - w, H + 2.5, zc, T];
+  return { fn, breaks, top: T };
+}
+
 function sampleProfile(fn, z0, z1, breaks) {
   const zs = [z0, ...breaks.filter((z) => z > z0 + 1e-6 && z < z1 - 1e-6).sort((a, b) => a - b), z1];
   return zs.map((z) => [z, fn(z)]);
@@ -277,11 +301,9 @@ export function buildBin(M, P) {
 
       let open;
       if (P.lipStyle !== 'none') {
-        // Next to the walls the divider top follows a 45° line 0.25 mm inside the lower chamfer
-        // of a stacked bin's foot, up to where it meets the lip.
-        const eA = Math.min(H + 2.35 - zTop, Math.min(W, L) / 2 - 0.5);
-        const zA = H + 2.35 - eA;
-        open = loft([[zTop, eA], [zA, eA], [H + 2.35, 0], [topZ + 2, 0]], 0, 0, W, L);
+        // Next to the walls the divider top follows lipFill() up into the lip.
+        const fill = lipFill(P, H, Math.min(W, L) / 2 - 0.5);
+        open = loft(sampleProfile(fill.fn, zTop, topZ + 2, fill.breaks), 0, 0, W, L);
       } else {
         open = keep(keep(M.cube([W + 4, L + 4, topZ + 2 - zTop], false)).translate([-W / 2 - 2, -L / 2 - 2, zTop]));
       }
@@ -344,15 +366,20 @@ export function buildBin(M, P) {
           for (const [y, z] of prof) pts.push([-Wi / 2 - 0.5, y, z], [Wi / 2 + 0.5, y, z]);
           adds.push(keep(M.hull(pts)));
         }
-        // The shelf at the back wall meets the lip with the same 45° ramp as the dividers,
-        // along its whole width, so the dividers' ramps become part of it.
+        // The shelf at the back wall meets the lip along the same surface as the dividers,
+        // over its whole width, so the dividers' ramps become part of it.
         if (P.lipStyle !== 'none' && rows.includes(P.cy - 1)) {
-          const eA = Math.min(H + 2.35 - zTop, P.wall + Lt);
-          const zA = H + 2.35 - eA;
-          const prof = [[0.3, zTop - 0.3], [eA, zTop - 0.3], [eA, zA], [0.3, H + 2.05]];
-          const pts = [];
-          for (const [e, z] of prof) pts.push([-Wi / 2 - 0.5, L / 2 - e, z], [Wi / 2 + 0.5, L / 2 - e, z]);
-          adds.push(keep(M.hull(pts)));
+          const fill = lipFill(P, H, P.wall + Lt);
+          const prof = [[zTop - 0.3, fill.fn(zTop)], ...sampleProfile(fill.fn, zTop, fill.top, fill.breaks)];
+          for (let k = 0; k < prof.length - 1; k++) {
+            const [z0, e0] = prof[k], [z1, e1] = prof[k + 1];
+            if (z1 - z0 < 1e-6) continue;
+            const pts = [];
+            for (const [e, z] of [[0.3, z0], [e0, z0], [e1, z1], [0.3, z1]]) {
+              pts.push([-Wi / 2 - 0.5, L / 2 - e, z], [Wi / 2 + 0.5, L / 2 - e, z]);
+            }
+            adds.push(keep(M.hull(pts)));
+          }
         }
       }
     }
