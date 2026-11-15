@@ -93,6 +93,16 @@ for (const c of CASES) {
     const { W, L, H, lipH } = outerSize(P);
     const m = new kernel.Manifold(r.mesh);
     const bb = m.boundingBox();
+    // Stacking: the same bin on top (it rests 0.35 mm below the rim; 0.3 keeps clear of the
+    // contact faces the spec allows) must not overlap anything in the lower bin.
+    if (P.lipStyle !== 'none') {
+      const up = m.translate([0, 0, H - 0.3]);
+      const inter = m.intersect(up);
+      const overlap = inter.volume();
+      up.delete();
+      inter.delete();
+      if (overlap > 1e-3) { ok = false; notes.push(`stacked bin overlaps ${overlap.toFixed(3)} mm³`); }
+    }
     m.delete();
     const exp = [[-W / 2, -L / 2, 0], [W / 2, L / 2, H + lipH]];
     const off = Math.max(...[0, 1, 2].map((i) => Math.max(Math.abs(bb.min[i] - exp[0][i]), Math.abs(bb.max[i] - exp[1][i]))));
