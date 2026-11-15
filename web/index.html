@@ -12,14 +12,20 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Unbounded:wght@500;700&display=swap">
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/style.css?v=__ASSET_VERSION__">
+<!-- __ASSET_VERSION__ is replaced with the commit SHA on deploy, so a new release never mixes with cached scripts. -->
 <script type="importmap">
 { "imports": {
   "three": "./vendor/three/three.module.min.js",
-  "three/addons/": "./vendor/three/addons/"
+  "three/addons/": "./vendor/three/addons/",
+  "./js/geometry.js": "./js/geometry.js?v=__ASSET_VERSION__",
+  "./js/i18n.js": "./js/i18n.js?v=__ASSET_VERSION__",
+  "./js/kernel.js": "./js/kernel.js?v=__ASSET_VERSION__",
+  "./js/stl.js": "./js/stl.js?v=__ASSET_VERSION__",
+  "./js/viewer.js": "./js/viewer.js?v=__ASSET_VERSION__"
 } }
 </script>
-<script type="module" src="js/main.js"></script>
+<script type="module" src="js/main.js?v=__ASSET_VERSION__"></script>
 </head>
 <body>
 <div class="app">

@@ -22,19 +22,31 @@ let timer = 0;
 let genSeq = 0;
 
 /* ---------- form <-> parameters ---------- */
+// Missing controls are skipped, so the form never breaks the page if the markup and the
+// script come from different releases.
+function setField(id, prop, value) {
+  const el = $(id);
+  if (el) el[prop] = value;
+}
+
 function writeForm(P) {
-  for (const k of INTS) $(k).value = P[k];
-  for (const k of FLOATS) $(k).value = P[k];
-  for (const k of BOOLS) $(k).checked = !!P[k];
-  $('base-lite').checked = P.lite;
-  $('base-std').checked = !P.lite;
-  $('lip-' + P.lipStyle).checked = true;
+  for (const k of [...INTS, ...FLOATS]) setField(k, 'value', P[k]);
+  for (const k of BOOLS) setField(k, 'checked', !!P[k]);
+  setField('base-lite', 'checked', P.lite);
+  setField('base-std', 'checked', !P.lite);
+  setField('lip-' + P.lipStyle, 'checked', true);
 }
 
 function readForm() {
   const raw = {};
-  for (const k of [...INTS, ...FLOATS]) raw[k] = parseFloat(String($(k).value).replace(',', '.'));
-  for (const k of BOOLS) raw[k] = $(k).checked;
+  for (const k of [...INTS, ...FLOATS]) {
+    const el = $(k);
+    if (el) raw[k] = parseFloat(String(el.value).replace(',', '.'));
+  }
+  for (const k of BOOLS) {
+    const el = $(k);
+    if (el) raw[k] = el.checked;
+  }
   raw.lite = $('base-lite').checked;
   const lip = document.querySelector('input[name="lip"]:checked');
   raw.lipStyle = lip ? lip.value : DEFAULTS.lipStyle;
@@ -57,7 +69,7 @@ function refreshLabels() {
   $('uz-sub').textContent = lipH
     ? t('unitHLip', { u: P.uz, mm: fmt(H, 0), lip: fmt(lipH) })
     : t('unitH', { u: P.uz, mm: fmt(H, 0) });
-  $('lip-hint').textContent = t({ standard: 'lipStdHint', thin: 'lipThinHint', none: 'lipNoneHint' }[P.lipStyle]);
+  setField('lip-hint', 'textContent', t({ standard: 'lipStdHint', thin: 'lipThinHint', none: 'lipNoneHint' }[P.lipStyle]));
   $('base-hint').textContent = P.lite ? t('liteHint') : t('stdHint');
   $('std-only').hidden = P.lite;
   $('floor-wrap').hidden = !P.lite;
