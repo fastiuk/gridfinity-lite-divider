@@ -353,7 +353,28 @@ export function buildBin(M, P) {
             ]));
             const dl = i === 0 ? lipIn : 0, dr = i === P.cx - 1 ? lipIn : 0;
             let shorter;
-            if (dl + dr > 0.05 && lF > 2 * rr + lipIn + 2) {
+            if (P.lipStyle === 'thin' && dl + dr > 0.05 && lF > 3 * rr + (thinBandBottom(H) - zF) + 3) {
+              // Thin lip: the band comes down to the tab corner. In front of the tab it ends
+              // with a 45° underside (like the support under the band) instead of a vertical step.
+              const xL = colLeft(i), xR = xL + cw;
+              const yA = rowFront(j) - 1;
+              const yP = yF - rr;                              // the corner fillet leaves the lip line
+              const yW = yP - (thinBandBottom(H) - zF);        // the 45° underside reaches the band
+              const full = prism((xL + xR) / 2, (yA + yW) / 2, cw, yW - yA, 0.01);
+              const y2 = Math.max(yA, yW - 2 * rr - 1);
+              const inner = prism((xL + dl + xR - dr) / 2, (y2 + yF) / 2, cw - dl - dr, yF - y2, rr);
+              const parts = [full, inner];
+              const wedge = (x0, x1) => {
+                const pts = [];
+                for (const [y, z] of [[yW - 0.05, zF - 0.05], [yW - 0.05, thinBandBottom(H) + 0.05], [yP, zF], [yP, zF - 0.05]]) {
+                  pts.push([x0, y, z], [x1, y, z]);
+                }
+                return keep(M.hull(pts));
+              };
+              if (dl) parts.push(wedge(xL - 1, xL + dl + 0.05));
+              if (dr) parts.push(wedge(xR - dr - 0.05, xR + 1));
+              shorter = unionAll(parts);
+            } else if (dl + dr > 0.05 && lF > 2 * rr + lipIn + 2) {
               const xL = colLeft(i), xR = xL + cw;
               const yA = rowFront(j) - 1, yS = yF - rr;  // full-width part ends one radius before the tab
               const full = prism((xL + xR) / 2, (yA + yS) / 2, cw, yS - yA, lipIn);
