@@ -338,8 +338,10 @@ export function buildBin(M, P) {
               ...ringPoints(x0, rowFront(j) + lF / 2, cw, lF, 0, zFloor - 1, rr, 0.01),
               ...ringPoints(x0, rowFront(j) + lF / 2, cw, lF, 0, topZ + 1, rr, 0.01),
             ]));
+            // (starts 0.05 mm in front of the tab so it overlaps the shorter box instead of
+            // just touching it, which could leave a zero-thickness wall between them)
             const under = [];
-            for (const [y, z] of [[yF, zFloor - 2], [yF, zF], [yB + 1, zK - tan], [yB + 1, zFloor - 2]]) {
+            for (const [y, z] of [[yF - 0.05, zFloor - 2], [yF - 0.05, zF], [yF, zF], [yB + 1, zK - tan], [yB + 1, zFloor - 2]]) {
               under.push([x0 - cw / 2 - 1, y, z], [x0 + cw / 2 + 1, y, z]);
             }
             // in front of the tab: the shorter box; under it: the full box; above its top: the
