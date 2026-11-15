@@ -73,6 +73,9 @@ const CASES = [
   { gridTall: true, ux: 3, uy: 3, cx: 3, cy: 3, label: true, labelRows: true },
   { cx: 1, cy: 1, lipStyle: 'ultrathin', lite: false },
   { fillet: 5, label: true, scoop: true },
+  { uz: 3, cx: 2, label: true, fillet: 5 },
+  { uz: 3, cx: 2, label: true, fillet: 0.3, lipStyle: 'ultrathin' },
+  { ux: 1, uy: 4, uz: 4, cy: 6, label: true, labelRows: true },
 ];
 
 const rows = document.getElementById('rows');
@@ -109,9 +112,11 @@ for (const c of CASES) {
     // 0.35 mm lower (0.3 here keeps clear of the contact faces the spec allows).
     if (P.lipStyle !== 'none') {
       // With no low divider and no label tab it sinks onto the lip (raised dividers sit in the
-      // groove between its feet), so check that position too.
+      // groove between its feet), so check that position too. A 1-unit bin on the standard base
+      // is solid up to H (its floor is at 7 mm), so the bin on top stands on that.
       const lay = dividerLayout(P);
-      const empty = !P.label && [...lay.xs, ...lay.ys].every((d) => d.top);
+      const floorTop = P.lite ? P.floor : 7;
+      const empty = !P.label && floorTop < H && [...lay.xs, ...lay.ys].every((d) => d.top);
       for (const dz of empty ? [H + 0.01, H - 0.3] : [H + 0.01]) {
         const up = m.translate([0, 0, dz]);
         const inter = m.intersect(up);
