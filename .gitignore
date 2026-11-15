@@ -1,0 +1,5 @@
+# Generated models and slicer files
+*.stl
+*.3mf
+*.gcode
+.DS_Store

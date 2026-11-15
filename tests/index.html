@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Geometry tests</title>
+<style>
+  body { margin: 0; padding: 16px; font: 13px/1.5 ui-monospace, Menlo, monospace; background: #f6f7f8; color: #1b1f24; }
+  h1 { font-size: 16px; margin: 0 0 12px; }
+  table { border-collapse: collapse; }
+  td, th { border: 1px solid #ccd; padding: 3px 8px; text-align: left; vertical-align: top; }
+  .pass { color: #186a2e; font-weight: 600; }
+  .fail { color: #b4232a; font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>Gridfinity Lite + Divider: geometry tests</h1>
+<p id="summary">Running…</p>
+<table>
+  <thead><tr><th>case</th><th>result</th><th>ms</th><th>volume, cm³</th><th>triangles</th><th>notes</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<script type="module">
+// Serve the repository root (python3 -m http.server 8000) and open http://localhost:8000/tests/
+import { buildBin, sanitize, outerSize, G } from '../web/js/geometry.js';
+import { binarySTL } from '../web/js/stl.js';
+import { loadKernel } from '../web/js/kernel.js';
+import { meshPositions } from '../web/js/geometry.js';
+
+const CASES = [
+  {},
+  { lite: false },
+  { lite: false, magnets: true, screws: true, scoop: true },
+  { scoop: true, labelRows: true },
+  { lip: false },
+  { ux: 1, uy: 1, uz: 3, cx: 1, cy: 1 },
+  { ux: 1, uy: 1, uz: 1, cx: 1, cy: 1 },
+  { ux: 3, uy: 1, uz: 4, cx: 6, cy: 1 },
+  { ux: 5, uy: 4, uz: 8, cx: 8, cy: 6, labelRows: true, scoop: true },
+  { lite: false, uz: 1, cx: 1, cy: 1 },
+  { wall: 1.8, floor: 2, divT: 4 },
+  { wall: 0.6, floor: 0.4 },
+  { divLower: 10, scoop: true, scoopR: 8 },
+  { ux: 10, uy: 10, uz: 3, cx: 1, cy: 1, label: false },
+];
+
+const rows = document.getElementById('rows');
+const add = (cells, ok) => {
+  const tr = document.createElement('tr');
+  cells.forEach((c, i) => {
+    const td = document.createElement('td');
+    td.textContent = c;
+    if (i === 1) td.className = ok ? 'pass' : 'fail';
+    tr.appendChild(td);
+  });
+  rows.appendChild(tr);
+};
+
+const kernel = await loadKernel();
+let failed = 0;
+const volumes = {};
+for (const c of CASES) {
+  const P = sanitize(c);
+  const notes = [];
+  let ok = true, ms = 0, vol = '', tris = '';
+  try {
+    const t0 = performance.now();
+    const r = buildBin(kernel.Manifold, P);
+    ms = Math.round(performance.now() - t0);
+    vol = (r.volume / 1000).toFixed(2);
+    tris = r.tris;
+    if (r.genus !== 0) { ok = false; notes.push(`genus ${r.genus}`); }
+    const { W, L, H, lipH } = outerSize(P);
+    const m = new kernel.Manifold(r.mesh);
+    const bb = m.boundingBox();
+    m.delete();
+    const exp = [[-W / 2, -L / 2, 0], [W / 2, L / 2, H + lipH]];
+    const off = Math.max(...[0, 1, 2].map((i) => Math.max(Math.abs(bb.min[i] - exp[0][i]), Math.abs(bb.max[i] - exp[1][i]))));
+    if (off > 0.01) { ok = false; notes.push(`bbox off by ${off.toFixed(3)} mm`); }
+    const stl = binarySTL(meshPositions(r.mesh), 'test');
+    const n = new DataView(stl.buffer).getUint32(80, true);
+    if (n !== r.tris || stl.length !== 84 + 50 * n) { ok = false; notes.push('STL size mismatch'); }
+    volumes[JSON.stringify({ ...c, lite: undefined })] ??= {};
+    volumes[JSON.stringify({ ...c, lite: undefined })][P.lite ? 'lite' : 'std'] = r.volume;
+  } catch (e) {
+    ok = false;
+    notes.push(String(e && e.message ? e.message : e));
+  }
+  if (!ok) failed++;
+  add([JSON.stringify(c), ok ? 'PASS' : 'FAIL', ms, vol, tris, notes.join('; ')], ok);
+}
+
+// The lite base must use less plastic than the standard one for the same bin.
+const pair = volumes[JSON.stringify({})];
+const liteLighter = pair && pair.lite < pair.std;
+add(['lite volume < standard volume (2×2×6)', liteLighter ? 'PASS' : 'FAIL', '', pair ? `${(pair.lite / 1000).toFixed(2)} vs ${(pair.std / 1000).toFixed(2)}` : '', '', ''], liteLighter);
+if (!liteLighter) failed++;
+
+document.getElementById('summary').textContent = failed ? `${failed} failed` : `All ${CASES.length + 1} checks passed`;
+document.title = (failed ? 'FAIL' : 'PASS') + ' · geometry tests';
+window.testResult = { failed };
+</script>
+</body>
+</html>

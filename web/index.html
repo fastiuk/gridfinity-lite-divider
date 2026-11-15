@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gridfinity Lite + Divider</title>
+<meta name="description" content="Генератор контейнерів Gridfinity з легкою порожнистою основою та перегородками на відсіки. STL рахується прямо в браузері.">
+<meta property="og:title" content="Gridfinity Lite + Divider">
+<meta property="og:description" content="Контейнери Gridfinity з легкою основою і перегородками. STL прямо в браузері.">
+<meta name="theme-color" content="#d4521a">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Unbounded:wght@500;700&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three/three.module.min.js",
+  "three/addons/": "./vendor/three/addons/"
+} }
+</script>
+<script type="module" src="js/main.js"></script>
+</head>
+<body>
+<div class="app">
+  <aside class="rail" aria-label="Parameters">
+    <div class="rail-scroll">
+      <header class="brand">
+        <div class="brand-row">
+          <h1>Gridfinity Lite <span class="plus">+</span> Divider</h1>
+          <div class="lang" role="group" aria-label="Language">
+            <button type="button" id="lang-uk" data-lang="uk" aria-pressed="true">UA</button>
+            <button type="button" id="lang-en" data-lang="en" aria-pressed="false">EN</button>
+          </div>
+        </div>
+        <p class="lede" data-i18n="lede"></p>
+      </header>
+
+      <section class="group" aria-labelledby="h-size">
+        <h2 id="h-size" data-i18n="size"></h2>
+        <div class="field">
+          <label for="ux" data-i18n="width"></label>
+          <span class="stepper"><button type="button" data-step="-1" data-for="ux" aria-label="−">−</button><input id="ux" type="number" min="1" max="10" step="1" inputmode="numeric"><button type="button" data-step="1" data-for="ux" aria-label="+">+</button></span>
+          <span class="sub" id="ux-sub"></span>
+        </div>
+        <div class="field">
+          <label for="uy" data-i18n="length"></label>
+          <span class="stepper"><button type="button" data-step="-1" data-for="uy" aria-label="−">−</button><input id="uy" type="number" min="1" max="10" step="1" inputmode="numeric"><button type="button" data-step="1" data-for="uy" aria-label="+">+</button></span>
+          <span class="sub" id="uy-sub"></span>
+        </div>
+        <div class="field">
+          <label for="uz" data-i18n="height"></label>
+          <span class="stepper"><button type="button" data-step="-1" data-for="uz" aria-label="−">−</button><input id="uz" type="number" min="1" max="20" step="1" inputmode="numeric"><button type="button" data-step="1" data-for="uz" aria-label="+">+</button></span>
+          <span class="sub" id="uz-sub"></span>
+        </div>
+      </section>
+
+      <section class="group" aria-labelledby="h-base">
+        <h2 id="h-base" data-i18n="base"></h2>
+        <div class="seg" role="radiogroup" aria-labelledby="h-base">
+          <label><input type="radio" name="base" id="base-lite" value="lite"><strong data-i18n="lite"></strong><small data-i18n="liteShort"></small></label>
+          <label><input type="radio" name="base" id="base-std" value="std"><strong data-i18n="std"></strong><small data-i18n="stdShort"></small></label>
+        </div>
+        <p class="hint" id="base-hint"></p>
+        <div id="std-only" class="stack" hidden>
+          <label class="check"><input type="checkbox" id="magnets"><span data-i18n="magnets"></span></label>
+          <label class="check"><input type="checkbox" id="screws"><span data-i18n="screws"></span></label>
+          <div class="field">
+            <label for="magD" data-i18n="magD"></label>
+            <input class="num" id="magD" type="number" min="3" max="10" step="0.1" inputmode="decimal">
+          </div>
+        </div>
+      </section>
+
+      <section class="group" aria-labelledby="h-comp">
+        <h2 id="h-comp" data-i18n="comp"></h2>
+        <div class="field">
+          <label for="cx" data-i18n="compX"></label>
+          <span class="stepper"><button type="button" data-step="-1" data-for="cx" aria-label="−">−</button><input id="cx" type="number" min="1" max="12" step="1" inputmode="numeric"><button type="button" data-step="1" data-for="cx" aria-label="+">+</button></span>
+        </div>
+        <div class="field">
+          <label for="cy" data-i18n="compY"></label>
+          <span class="stepper"><button type="button" data-step="-1" data-for="cy" aria-label="−">−</button><input id="cy" type="number" min="1" max="12" step="1" inputmode="numeric"><button type="button" data-step="1" data-for="cy" aria-label="+">+</button></span>
+        </div>
+        <p class="hint" id="comp-hint"></p>
+      </section>
+
+      <section class="group" aria-labelledby="h-feat">
+        <h2 id="h-feat" data-i18n="features"></h2>
+        <label class="check"><input type="checkbox" id="lip"><span data-i18n="lip"></span></label>
+        <label class="check"><input type="checkbox" id="label"><span data-i18n="label"></span></label>
+        <label class="check indent" id="labelRows-wrap"><input type="checkbox" id="labelRows"><span data-i18n="labelRows"></span></label>
+        <label class="check"><input type="checkbox" id="scoop"><span data-i18n="scoop"></span></label>
+        <p class="hint warn" id="scoop-note" hidden data-i18n="scoopNote"></p>
+      </section>
+
+      <section class="group">
+        <details class="adv" id="adv">
+          <summary data-i18n="advanced"></summary>
+          <div class="inner">
+            <div class="field"><label for="wall" data-i18n="wall"></label><input class="num" id="wall" type="number" min="0.6" max="1.8" step="0.05" inputmode="decimal"></div>
+            <div class="field" id="floor-wrap"><label for="floor" data-i18n="floor"></label><input class="num" id="floor" type="number" min="0.4" max="2" step="0.05" inputmode="decimal"></div>
+            <div class="field"><label for="divT" data-i18n="divT"></label><input class="num" id="divT" type="number" min="0.6" max="4" step="0.1" inputmode="decimal"></div>
+            <div class="field"><label for="divLower" data-i18n="divLower"></label><input class="num" id="divLower" type="number" min="0" max="130" step="0.5" inputmode="decimal"></div>
+            <div class="field"><label for="scoopR" data-i18n="scoopR"></label><input class="num" id="scoopR" type="number" min="0" max="40" step="0.5" inputmode="decimal"></div>
+            <p class="hint" data-i18n="advHint"></p>
+            <button type="button" class="btn-link" id="reset-params" data-i18n="resetParams"></button>
+          </div>
+        </details>
+      </section>
+
+      <section class="group spec" aria-label="Spec">
+        <span data-i18n="spec1"></span>
+        <span data-i18n="spec2"></span>
+        <span><span data-i18n="credit"></span> <a href="https://gridfinity.bouwens.co/" target="_blank" rel="noopener">gridfinity.bouwens.co</a></span>
+        <span><a href="https://github.com/fastiuk/gridfinity-lite-divider" target="_blank" rel="noopener" data-i18n="source"></a></span>
+      </section>
+    </div>
+
+    <div class="export">
+      <button type="button" class="btn-primary" id="download" disabled><span data-i18n="download"></span></button>
+      <span class="fname" id="fname"></span>
+    </div>
+  </aside>
+
+  <main class="stage" aria-label="3D preview">
+    <canvas id="view"></canvas>
+    <div class="hud" aria-live="polite">
+      <div class="chip"><span data-i18n="dims"></span><b id="hud-dims">—</b></div>
+      <div class="chip"><span data-i18n="vol"></span><b id="hud-vol">—</b></div>
+      <div class="chip"><span data-i18n="mass"></span><b id="hud-mass">—</b></div>
+      <div class="chip"><span data-i18n="tris"></span><b id="hud-tris">—</b></div>
+    </div>
+    <div class="viewbar">
+      <div class="tool">
+        <label for="sec-mode" data-i18n="section"></label>
+        <select id="sec-mode">
+          <option value="off" data-i18n="secOff"></option>
+          <option value="x" data-i18n="secX"></option>
+          <option value="y" data-i18n="secY"></option>
+        </select>
+        <input type="range" id="sec-pos" min="-100" max="100" value="0" aria-label="Section position" disabled>
+      </div>
+      <div class="tool"><button type="button" id="reset-view" data-i18n="reset"></button></div>
+      <div class="status busy" id="status" role="status"><span class="dot"></span><span id="status-text">…</span></div>
+    </div>
+  </main>
+</div>
+<noscript><p class="noscript">This generator needs JavaScript. / Для генератора потрібен JavaScript.</p></noscript>
+</body>
+</html>

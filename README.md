@@ -1,0 +1,102 @@
+[![Сайт](https://img.shields.io/badge/сайт-fastiuk.github.io%2Fgridfinity--lite--divider-2f7d4f?logo=googlechrome&logoColor=white)](https://fastiuk.github.io/gridfinity-lite-divider/)
+[![GitHub](https://img.shields.io/badge/GitHub-fastiuk%2Fgridfinity--lite--divider-181717?logo=github&logoColor=white)](https://github.com/fastiuk/gridfinity-lite-divider)
+[![Pages](https://img.shields.io/github/actions/workflow/status/fastiuk/gridfinity-lite-divider/pages.yml?branch=main&label=pages&logo=githubactions&logoColor=white)](https://github.com/fastiuk/gridfinity-lite-divider/actions/workflows/pages.yml)
+[![Release](https://img.shields.io/github/v/release/fastiuk/gridfinity-lite-divider?logo=github&logoColor=white)](https://github.com/fastiuk/gridfinity-lite-divider/releases)
+[![Backend](https://img.shields.io/badge/backend-none-blue)](#як-це-працює)
+[![License](https://img.shields.io/github/license/fastiuk/gridfinity-lite-divider)](LICENSE)
+
+# Gridfinity Lite + Divider
+
+Сайт: **https://fastiuk.github.io/gridfinity-lite-divider/**
+
+Генератор контейнерів [Gridfinity](https://gridfinity.xyz/), у якому легка порожниста основа
+поєднана з перегородками на відсіки. На [gridfinity.bouwens.co](https://gridfinity.bouwens.co/)
+це два окремі типи: легкий контейнер без відсіків або контейнер з відсіками на суцільній основі.
+Тут вони об'єднані.
+
+Модель рахується в браузері: бекенду немає, параметри нікуди не відправляються.
+
+## Як користуватися
+1. Задайте ширину й довжину в клітинках сітки (42 мм) і висоту в кроках по 7 мм.
+2. Оберіть основу: **легку** (порожнисту) або **стандартну** (суцільну, з отворами під магніти й гвинти).
+3. Задайте кількість відсіків по ширині й довжині, кромку для штабелювання, полиці для етикеток і ківш.
+4. Перевірте модель у 3D. Розріз поперек X або Y показує, як влаштована основа.
+5. Натисніть «Завантажити STL» і наслайсіть файл як звичайно.
+
+## Легка основа
+- Кожна ніжка порожня зсередини. Стінки йдуть уздовж профілю ніжки з однаковою товщиною по горизонталі,
+  тож слайсер друкує їх тими самими периметрами, що й стінки корпусу.
+- Між сусідніми клітинками всередині утворюється гребінь під 45°: нависань немає, підтримки не потрібні.
+- Перегородки стоять на тонкому дні ніжок і йдуть до верху контейнера.
+- Магнітів і гвинтів у легкій основі немає: під них немає товщини.
+- Контейнер 2×2×6 з кромкою: 38,9 см³ пластику в легкій основі проти 71,9 см³ у стандартній.
+
+## Як це працює
+STL не береться з шаблону. Кожен раз модель будується з нуля за параметрами і розмірами
+специфікації Gridfinity методом конструктивної геометрії (булеві операції над тілами), як в OpenSCAD:
+
+1. **Зовнішнє тіло.** Для кожної клітинки сітки будується ніжка за профілем 0,8 / 1,8 / 2,15 мм під 45°,
+   над ними прямий корпус 42·n − 0,5 мм з радіусом кутів 3,75 мм.
+2. **Порожнина.** У стандартній основі це корпус, зменшений на товщину стінки, від висоти 7 мм.
+   У легкій до нього додається «кишеня» в кожній ніжці: той самий профіль ніжки, зсунутий усередину
+   на товщину стінки і піднятий на товщину дна. Профіль кромки (0,7 / 1,8 / 1,9 мм) теж задає форму порожнини.
+3. **Внутрішні деталі.** Перегородки, ковші й полиці для етикеток будуються як окремі тіла і віднімаються
+   від порожнини, тобто стають суцільним пластиком.
+4. **Результат.** Зовнішнє тіло мінус порожнина, мінус отвори під магніти й гвинти. Отримана сітка
+   трикутників записується в бінарний STL.
+
+Булеві операції виконує [manifold](https://github.com/elalish/manifold), скомпільований у WebAssembly.
+Він гарантує замкнену сітку без самоперетинів, тож слайсеру не треба нічого лагодити.
+Код геометрії: [`web/js/geometry.js`](web/js/geometry.js).
+
+## Параметри
+| Параметр | За замовчуванням | Межі |
+|---|---|---|
+| Ширина × довжина, клітинок | 2 × 2 | 1–10 |
+| Висота, кроків по 7 мм | 6 | 1–20 |
+| Основа | легка | легка / стандартна |
+| Відсіки | 3 × 2 | відсік не вужчий за ~10 мм |
+| Товщина стінок | 1,0 мм | 0,6–1,8 мм |
+| Товщина дна легкої основи | 0,8 мм | 0,4–2,0 мм |
+| Товщина перегородок | 1,2 мм | 0,6–4,0 мм |
+| Отвір під магніт (стандартна основа) | 6,5 × 2,4 мм | діаметр 3–10 мм |
+| Отвір під гвинт (стандартна основа) | 3 × 6 мм | — |
+
+Коли є кромка, перегородки й полиці закінчуються на 0,6 мм нижче її початку, щоб контейнер зверху
+ставав без упору.
+
+## Розробка
+Збірки немає: сайт це статичні файли в `web/`, бібліотеки лежать у `web/vendor/`.
+
+```bash
+python3 -m http.server 8000
+```
+
+- Сайт: http://localhost:8000/web/
+- Тести геометрії: http://localhost:8000/tests/ (будують 14 варіантів контейнера і перевіряють,
+  що кожен замкнений, має правильні габарити і коректний STL)
+
+Кожен push у `main` публікує `web/` на GitHub Pages ([workflow](.github/workflows/pages.yml)).
+
+```
+web/
+  index.html, css/style.css, favicon.svg
+  js/geometry.js   модель контейнера
+  js/stl.js        запис бінарного STL
+  js/kernel.js     завантаження manifold (WebAssembly)
+  js/viewer.js     3D-перегляд на three.js
+  js/i18n.js       тексти українською й англійською
+  js/main.js       інтерфейс
+  vendor/          manifold-3d 3.5.1, three.js r170
+tests/index.html   тести геометрії в браузері
+```
+
+## Сторонні компоненти
+- [manifold-3d](https://www.npmjs.com/package/manifold-3d) 3.5.1, Apache-2.0: [`web/vendor/manifold`](web/vendor/manifold)
+- [three.js](https://threejs.org/) r170, MIT: [`web/vendor/three`](web/vendor/three)
+- Шрифти IBM Plex і Unbounded, SIL Open Font License, з Google Fonts
+- Ідея й набір параметрів за зразком [gridfinity.bouwens.co](https://gridfinity.bouwens.co/);
+  система Gridfinity створена Zack Freedman
+
+## Ліцензія
+[MIT](LICENSE)
