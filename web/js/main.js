@@ -1,5 +1,6 @@
-import { DEFAULTS, G, buildBin, compartmentSize, fileBase, maxComp, meshPositions, outerSize, sanitize } from './geometry.js';
+import { DEFAULTS, G, buildBin, compartmentSize, dividerLayout, fileBase, maxComp, meshPositions, outerSize, sanitize } from './geometry.js';
 import { binarySTL } from './stl.js';
+import { meshToStep } from './step.js';
 import { loadKernel } from './kernel.js';
 import { createViewer } from './viewer.js';
 import { fmt, getLang, setLang, t } from './i18n.js';
@@ -7,7 +8,7 @@ import { fmt, getLang, setLang, t } from './i18n.js';
 const $ = (id) => document.getElementById(id);
 const INTS = ['ux', 'uy', 'uz', 'cx', 'cy'];
 const FLOATS = ['magD', 'wall', 'floor', 'divT', 'divLower', 'scoopR', 'fillet'];
-const BOOLS = ['label', 'labelRows', 'scoop', 'magnets', 'screws'];
+const BOOLS = ['label', 'labelRows', 'scoop', 'gridTall', 'magnets', 'screws'];
 
 const store = {
   get(k) { try { return JSON.parse(localStorage.getItem('gfld:' + k)); } catch { return null; } },
@@ -16,7 +17,8 @@ const store = {
 
 let kernel = null;
 let viewer = null;
-let current = null;          // last generated model: { pos, P, dims, volume, tris }
+let current = null;          // last generated model: { mesh, pos, P, dims, volume, tris }
+let format = store.get('format') === 'step' ? 'step' : 'stl';
 let lastSizeKey = '';
 let timer = 0;
 let genSeq = 0;
@@ -84,7 +86,21 @@ function refreshLabels() {
   const rowsOk = P.label && P.cy > 1;
   $('labelRows').disabled = !rowsOk;
   $('labelRows-wrap').classList.toggle('disabled', !rowsOk);
-  $('fname').textContent = fileBase(P) + '.stl';
+
+  const lipOn = P.lipStyle !== 'none';
+  const layout = dividerLayout({ ...P, gridTall: true });
+  const all = [...layout.xs, ...layout.ys];
+  const onGrid = all.filter((d) => d.top).length;
+  setField('gridTall', 'disabled', !lipOn);
+  $('gridTall-wrap').classList.toggle('disabled', !lipOn);
+  setField('grid-hint', 'textContent', !lipOn
+    ? t('gridHintNoLip')
+    : all.length ? t('gridHint', { n: onGrid, total: all.length }) : t('gridHintNone'));
+
+  $('fname').textContent = fileBase(P) + '.' + format;
+  $('download-label').textContent = t('download', { fmt: format.toUpperCase() });
+  $('step-note').hidden = format !== 'step';
+  setField('fmt-' + format, 'checked', true);
 }
 
 function updateHud(c) {
@@ -124,7 +140,7 @@ async function generate() {
   try {
     const out = buildBin(kernel.Manifold, P);
     const pos = meshPositions(out.mesh);
-    current = { pos, P, dims: out.dims, volume: out.volume, tris: out.tris };
+    current = { mesh: out.mesh, pos, P, dims: out.dims, volume: out.volume, tris: out.tris };
     if (viewer) {
       viewer.setModel(pos.slice(), out.dims, P.ux, P.uy);
       const sizeKey = `${P.ux}x${P.uy}x${P.uz}`;
@@ -143,10 +159,13 @@ async function generate() {
 function download() {
   if (!current) return;
   const base = fileBase(current.P);
-  const url = URL.createObjectURL(new Blob([binarySTL(current.pos, base)], { type: 'model/stl' }));
+  const blob = format === 'step'
+    ? new Blob([meshToStep(current.mesh, base).text], { type: 'model/step' })
+    : new Blob([binarySTL(current.pos, base)], { type: 'model/stl' });
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = base + '.stl';
+  a.download = base + '.' + format;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -170,9 +189,15 @@ function wire() {
     schedule(e.type === 'input' && e.target.type === 'number' ? 450 : 120);
   };
   document.querySelectorAll('.rail input').forEach((el) => {
+    if (el.name === 'fmt') return;
     el.addEventListener('change', onChange);
     if (el.type === 'number') el.addEventListener('input', onChange);
   });
+  document.querySelectorAll('input[name="fmt"]').forEach((el) => el.addEventListener('change', () => {
+    format = el.value === 'step' ? 'step' : 'stl';
+    store.set('format', format);
+    refreshLabels();
+  }));
 
   $('download').addEventListener('click', download);
   $('reset-params').addEventListener('click', () => {
@@ -225,6 +250,6 @@ async function main() {
 }
 
 // Exposed for the browser test page and for debugging from the console.
-window.gridfinity = { G, buildBin, sanitize, get kernel() { return kernel; } };
+window.gridfinity = { G, buildBin, sanitize, dividerLayout, meshToStep, get kernel() { return kernel; }, get current() { return current; } };
 
 main();

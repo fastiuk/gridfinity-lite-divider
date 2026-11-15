@@ -23,7 +23,7 @@ export const LIP_STYLES = ['standard', 'thin', 'ultrathin', 'none'];
 
 export const DEFAULTS = Object.freeze({
   ux: 2, uy: 2, uz: 6, lite: true, cx: 3, cy: 2,
-  lipStyle: 'standard', label: true, labelRows: false, scoop: false,
+  lipStyle: 'standard', label: true, labelRows: false, scoop: false, gridTall: true,
   magnets: true, screws: false, magD: 6.5,
   wall: 1.0, floor: 0.8, divT: 1.2, divLower: 0, scoopR: 0, fillet: 2,
 });
@@ -46,7 +46,7 @@ export function sanitize(input) {
   P.ux = clamp(Math.round(n(P.ux, DEFAULTS.ux)), 1, 10);
   P.uy = clamp(Math.round(n(P.uy, DEFAULTS.uy)), 1, 10);
   P.uz = clamp(Math.round(n(P.uz, DEFAULTS.uz)), 1, 20);
-  for (const k of ['lite', 'label', 'labelRows', 'scoop', 'magnets', 'screws']) P[k] = !!P[k];
+  for (const k of ['lite', 'label', 'labelRows', 'scoop', 'gridTall', 'magnets', 'screws']) P[k] = !!P[k];
   P.fillet = clamp(n(P.fillet, DEFAULTS.fillet), 0, 5);
   P.magD = clamp(n(P.magD, DEFAULTS.magD), 3, 10);
   P.wall = clamp(n(P.wall, DEFAULTS.wall), 0.6, 1.8);
@@ -78,6 +78,39 @@ export function compartmentSize(P) {
   const { W, L } = outerSize(P);
   const Wi = W - 2 * P.wall, Li = L - 2 * P.wall;
   return [(Wi - (P.cx - 1) * P.divT) / P.cx, (Li - (P.cy - 1) * P.divT) / P.cy];
+}
+
+// Where the dividers are and how high each one may go.
+// A stacked bin rests 0.35 mm below the rim (H) and its feet leave a groove over every grid line:
+// 0.25 mm of clearance plus the foot inset on each side. A divider that sits on a grid line can
+// rise into that groove, up to the top of the lip's straight band (H + 2.5), or to the start of
+// the chamfer for the ultra-thin lip, keeping at least 0.5 mm from the feet.
+// `top` is that raised height, or null for a divider that stays at dividerTop().
+export function dividerLayout(P) {
+  const { W, L, H } = outerSize(P);
+  const Wi = W - 2 * P.wall, Li = L - 2 * P.wall;
+  const [cw, cl] = compartmentSize(P);
+  const zTop = dividerTop(P);
+  const target = P.lipStyle === 'ultrathin' ? H + 4.4 - P.wall : H + 2.5;
+  const raised = (pos, units) => {
+    if (P.lipStyle === 'none' || !P.gridTall) return null;
+    let off = Infinity;
+    for (let k = 1; k < units; k++) off = Math.min(off, Math.abs(pos - (k - units / 2) * G.grid));
+    const half = P.divT / 2 + off;
+    if (half > 1.9) return null;
+    const z = Math.min(target, H + 4.4 - half - 0.25) - P.divLower;
+    return z > zTop + 0.5 ? z : null;
+  };
+  const xs = [], ys = [];
+  for (let i = 1; i < P.cx; i++) {
+    const x = -Wi / 2 + i * cw + (i - 0.5) * P.divT;
+    xs.push({ pos: x, top: raised(x, P.ux) });
+  }
+  for (let j = 1; j < P.cy; j++) {
+    const y = -Li / 2 + j * cl + (j - 0.5) * P.divT;
+    ys.push({ pos: y, top: raised(y, P.uy) });
+  }
+  return { xs, ys, zTop };
 }
 
 // Inset of the foot outline from the 41.5 mm cell outline at height z (45° / vertical / 45°).
@@ -241,8 +274,47 @@ export function buildBin(M, P) {
       cavity = keep(cavity.intersect(unionAll([...boxes, slab])));
     }
 
-    // ---- solids that go back into the cavity: scoops and label shelves
+    // ---- solids that go back into the cavity: raised dividers, divider-to-lip ramps,
+    // scoops and label shelves
     const adds = [];
+
+    if (P.lipStyle !== 'none') {
+      const layout = dividerLayout(P);
+      // Ramp at each end of a low divider: from the divider top up to the lip at 45°, 0.25 mm
+      // inside the lower chamfer of a stacked bin's foot. `along` maps the distance from the
+      // outer face to a coordinate on the divider's axis; `across` places the two faces.
+      const ramp = (half, along, across) => {
+        const zEnd = H + 0.45;                   // the ramp line reaches the lip band (1.9 mm) here
+        const eA = Math.min(H + 2.35 - zTop, half - 0.5);
+        const zA = H + 2.35 - eA;
+        if (eA <= 1.9 || zA >= zEnd) return null;
+        const prof = [[0.3, zTop - 0.3], [eA, zTop - 0.3], [eA, zA], [1.9, zEnd], [0.3, zEnd]];
+        const pts = [];
+        for (const [e, z] of prof) for (const s of [-1, 1]) pts.push(across(along(e), s, z));
+        return keep(M.hull(pts));
+      };
+      const t2 = P.divT / 2;
+      for (const d of layout.xs) {
+        if (d.top) {
+          adds.push(keep(keep(M.cube([P.divT, L + 2, d.top - zTop + 0.5], false)).translate([d.pos - t2, -L / 2 - 1, zTop - 0.5])));
+        } else {
+          for (const sign of [-1, 1]) {
+            const r = ramp(L / 2, (e) => sign * (L / 2 - e), (y, s, z) => [d.pos + s * t2, y, z]);
+            if (r) adds.push(r);
+          }
+        }
+      }
+      for (const d of layout.ys) {
+        if (d.top) {
+          adds.push(keep(keep(M.cube([W + 2, P.divT, d.top - zTop + 0.5], false)).translate([-W / 2 - 1, d.pos - t2, zTop - 0.5])));
+        } else {
+          for (const sign of [-1, 1]) {
+            const r = ramp(W / 2, (e) => sign * (W / 2 - e), (x, s, z) => [x, d.pos + s * t2, z]);
+            if (r) adds.push(r);
+          }
+        }
+      }
+    }
 
     if (P.scoop) {
       const auto = Math.min(cl * 0.5, (zTop - zFloor) * 0.45, 20);
