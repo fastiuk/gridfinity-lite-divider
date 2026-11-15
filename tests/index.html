@@ -22,7 +22,7 @@
 </table>
 <script type="module">
 // Serve the repository root (python3 -m http.server 8000) and open http://localhost:8000/tests/
-import { buildBin, meshPositions, outerSize, sanitize } from '../web/js/geometry.js';
+import { buildBin, dividerLayout, meshPositions, outerSize, sanitize } from '../web/js/geometry.js';
 import { binarySTL } from '../web/js/stl.js';
 import { meshToStep } from '../web/js/step.js';
 import { loadKernel } from '../web/js/kernel.js';
@@ -61,6 +61,11 @@ const CASES = [
   { ux: 3, uy: 3, cx: 3, cy: 3, label: true, labelRows: true },
   { divLower: 8, label: true },
   { cx: 1, cy: 1, lipStyle: 'standard' },
+  { gridTall: true },
+  { gridTall: true, cx: 2, cy: 2 },
+  { gridTall: true, cx: 2, cy: 2, lipStyle: 'standard', label: true },
+  { gridTall: true, cx: 2, cy: 2, lipStyle: 'ultrathin' },
+  { gridTall: true, ux: 3, uy: 3, cx: 3, cy: 3, label: true, labelRows: true },
   { cx: 1, cy: 1, lipStyle: 'ultrathin', lite: false },
   { fillet: 5, label: true, scoop: true },
 ];
@@ -95,10 +100,13 @@ for (const c of CASES) {
     const m = new kernel.Manifold(r.mesh);
     const bb = m.boundingBox();
     // Stacking: the same bin on top must not overlap anything in the lower bin. It rests on the
-    // dividers and label tabs at H; with none of them it sinks onto the lip's chamfers, 0.35 mm
-    // lower (0.3 here keeps clear of the contact faces the spec allows).
+    // low dividers and label tabs at H; with none of them it sinks onto the lip's chamfers,
+    // 0.35 mm lower (0.3 here keeps clear of the contact faces the spec allows).
     if (P.lipStyle !== 'none') {
-      const empty = P.cx === 1 && P.cy === 1 && !P.label;
+      // With no low divider and no label tab it sinks onto the lip (raised dividers sit in the
+      // groove between its feet), so check that position too.
+      const lay = dividerLayout(P);
+      const empty = !P.label && [...lay.xs, ...lay.ys].every((d) => d.top);
       for (const dz of empty ? [H + 0.01, H - 0.3] : [H + 0.01]) {
         const up = m.translate([0, 0, dz]);
         const inter = m.intersect(up);
