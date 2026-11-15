@@ -344,6 +344,16 @@ export function buildBin(M, P) {
           for (const [y, z] of prof) pts.push([-Wi / 2 - 0.5, y, z], [Wi / 2 + 0.5, y, z]);
           adds.push(keep(M.hull(pts)));
         }
+        // The shelf at the back wall meets the lip with the same 45° ramp as the dividers,
+        // along its whole width, so the dividers' ramps become part of it.
+        if (P.lipStyle !== 'none' && rows.includes(P.cy - 1)) {
+          const eA = Math.min(H + 2.35 - zTop, P.wall + Lt);
+          const zA = H + 2.35 - eA;
+          const prof = [[0.3, zTop - 0.3], [eA, zTop - 0.3], [eA, zA], [0.3, H + 2.05]];
+          const pts = [];
+          for (const [e, z] of prof) pts.push([-Wi / 2 - 0.5, L / 2 - e, z], [Wi / 2 + 0.5, L / 2 - e, z]);
+          adds.push(keep(M.hull(pts)));
+        }
       }
     }
 
