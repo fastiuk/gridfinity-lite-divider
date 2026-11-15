@@ -23,8 +23,8 @@ export const LIP_STYLES = ['standard', 'thin', 'ultrathin', 'none'];
 
 export const DEFAULTS = Object.freeze({
   ux: 2, uy: 2, uz: 6, lite: true, cx: 3, cy: 2,
-  lipStyle: 'standard', label: true, labelRows: false, scoop: false, gridTall: true,
-  magnets: true, screws: false, magD: 6.5,
+  lipStyle: 'thin', label: false, labelRows: false, scoop: false, gridTall: false,
+  magnets: false, screws: false, magD: 6.5,
   wall: 1.0, floor: 0.8, divT: 1.2, divLower: 0, scoopR: 0, fillet: 2,
 });
 
@@ -240,12 +240,16 @@ export function buildBin(M, P) {
       cavity = loft(sampleProfile(body.fn, G.stdFloor, topZ + 1, body.breaks), 0, 0, W, L);
     }
 
-    // ---- compartments: below the divider top the cavity is limited to one rounded box per
-    // compartment, so the gaps between boxes become the dividers. Each box has its vertical
-    // edges and its bottom edges rounded with the fillet radius, which puts fillets where the
-    // floor meets the walls and the dividers, and in the corners between dividers.
+    // ---- compartments and dividers
+    // The cavity is limited to one tall rounded box per compartment plus an "open" region above
+    // the dividers. The gaps between boxes are the dividers; the boxes' rounded vertical edges
+    // are the fillets in the corners, their rounded bottom edges the fillets at the floor.
+    // The open region starts at the divider top, rises at 45° next to the walls (so dividers run
+    // into the lip) and leaves out the raised dividers together with their corners. Because the
+    // boxes go all the way up, every fillet runs to the top of the divider it belongs to.
     const Wi = W - 2 * P.wall, Li = L - 2 * P.wall;
-    const zTop = dividerTop(P);
+    const layout = dividerLayout(P);
+    const zTop = layout.zTop;
     const [cw, cl] = compartmentSize(P);
     const rowFront = (j) => -Li / 2 + j * (cl + P.divT);
     const colLeft = (i) => -Wi / 2 + i * (cw + P.divT);
@@ -266,55 +270,53 @@ export function buildBin(M, P) {
           } else {
             pts.push(...ringPoints(x0, y0, cw, cl, 0, zFloor - 1, 0.01, 0.01));
           }
-          pts.push(...ringPoints(x0, y0, cw, cl, 0, zTop + 0.5, rounded ? r : 0.01, 0.01));
+          pts.push(...ringPoints(x0, y0, cw, cl, 0, topZ + 1, rounded ? r : 0.01, 0.01));
           boxes.push(keep(M.hull(pts)));
         }
       }
-      const slab = keep(keep(M.cube([W + 4, L + 4, topZ + 2 - zTop], false)).translate([-W / 2 - 2, -L / 2 - 2, zTop]));
-      cavity = keep(cavity.intersect(unionAll([...boxes, slab])));
-    }
 
-    // ---- solids that go back into the cavity: raised dividers, divider-to-lip ramps,
-    // scoops and label shelves
-    const adds = [];
-
-    if (P.lipStyle !== 'none') {
-      const layout = dividerLayout(P);
-      // Ramp at each end of a low divider: from the divider top up to the lip at 45°, 0.25 mm
-      // inside the lower chamfer of a stacked bin's foot. `along` maps the distance from the
-      // outer face to a coordinate on the divider's axis; `across` places the two faces.
-      const ramp = (half, along, across) => {
-        const zEnd = H + 0.45;                   // the ramp line reaches the lip band (1.9 mm) here
-        const eA = Math.min(H + 2.35 - zTop, half - 0.5);
+      let open;
+      if (P.lipStyle !== 'none') {
+        // Next to the walls the divider top follows a 45° line 0.25 mm inside the lower chamfer
+        // of a stacked bin's foot, up to where it meets the lip.
+        const eA = Math.min(H + 2.35 - zTop, Math.min(W, L) / 2 - 0.5);
         const zA = H + 2.35 - eA;
-        if (eA <= 1.9 || zA >= zEnd) return null;
-        const prof = [[0.3, zTop - 0.3], [eA, zTop - 0.3], [eA, zA], [1.9, zEnd], [0.3, zEnd]];
-        const pts = [];
-        for (const [e, z] of prof) for (const s of [-1, 1]) pts.push(across(along(e), s, z));
-        return keep(M.hull(pts));
-      };
-      const t2 = P.divT / 2;
+        open = loft([[zTop, eA], [zA, eA], [H + 2.35, 0], [topZ + 2, 0]], 0, 0, W, L);
+      } else {
+        open = keep(keep(M.cube([W + 4, L + 4, topZ + 2 - zTop], false)).translate([-W / 2 - 2, -L / 2 - 2, zTop]));
+      }
+
+      // Raised dividers stay solid up to their own top, and so do the corners next to them
+      // (at the walls and where two raised dividers cross), so their fillets go up with them.
+      const t2 = P.divT / 2, pad = (rounded ? r : 0) + 0.3;
+      const block = (x0, y0, x1, y1, z1) =>
+        keep(keep(M.cube([x1 - x0, y1 - y0, z1 - zTop + 1], false)).translate([x0, y0, zTop - 1]));
+      const zones = [];
       for (const d of layout.xs) {
-        if (d.top) {
-          adds.push(keep(keep(M.cube([P.divT, L + 2, d.top - zTop + 0.5], false)).translate([d.pos - t2, -L / 2 - 1, zTop - 0.5])));
-        } else {
-          for (const sign of [-1, 1]) {
-            const r = ramp(L / 2, (e) => sign * (L / 2 - e), (y, s, z) => [d.pos + s * t2, y, z]);
-            if (r) adds.push(r);
-          }
-        }
+        if (!d.top) continue;
+        zones.push(block(d.pos - t2, -L / 2 - 1, d.pos + t2, L / 2 + 1, d.top));
+        zones.push(block(d.pos - t2 - pad, -L / 2 - 1, d.pos + t2 + pad, -Li / 2 + pad, d.top));
+        zones.push(block(d.pos - t2 - pad, Li / 2 - pad, d.pos + t2 + pad, L / 2 + 1, d.top));
       }
       for (const d of layout.ys) {
-        if (d.top) {
-          adds.push(keep(keep(M.cube([W + 2, P.divT, d.top - zTop + 0.5], false)).translate([-W / 2 - 1, d.pos - t2, zTop - 0.5])));
-        } else {
-          for (const sign of [-1, 1]) {
-            const r = ramp(W / 2, (e) => sign * (W / 2 - e), (x, s, z) => [x, d.pos + s * t2, z]);
-            if (r) adds.push(r);
+        if (!d.top) continue;
+        zones.push(block(-W / 2 - 1, d.pos - t2, W / 2 + 1, d.pos + t2, d.top));
+        zones.push(block(-W / 2 - 1, d.pos - t2 - pad, -Wi / 2 + pad, d.pos + t2 + pad, d.top));
+        zones.push(block(Wi / 2 - pad, d.pos - t2 - pad, W / 2 + 1, d.pos + t2 + pad, d.top));
+      }
+      for (const a of layout.xs) {
+        for (const b of layout.ys) {
+          if (a.top && b.top) {
+            zones.push(block(a.pos - t2 - pad, b.pos - t2 - pad, a.pos + t2 + pad, b.pos + t2 + pad, Math.min(a.top, b.top)));
           }
         }
       }
+      if (zones.length) open = keep(open.subtract(unionAll(zones)));
+      cavity = keep(cavity.intersect(unionAll([...boxes, open])));
     }
+
+    // ---- solids that go back into the cavity: scoops and label shelves
+    const adds = [];
 
     if (P.scoop) {
       const auto = Math.min(cl * 0.5, (zTop - zFloor) * 0.45, 20);

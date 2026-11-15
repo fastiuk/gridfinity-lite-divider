@@ -15,6 +15,9 @@ const store = {
   set(k, v) { try { localStorage.setItem('gfld:' + k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
 };
 
+// Bumped when the defaults change, so everyone starts from the new defaults once.
+const PARAMS_KEY = 'params-v2';
+
 let kernel = null;
 let viewer = null;
 let current = null;          // last generated model: { mesh, pos, P, dims, volume, tris }
@@ -130,7 +133,7 @@ function schedule(delay = 180) {
 async function generate() {
   if (!kernel) return;
   const P = readForm();
-  store.set('params', P);
+  store.set(PARAMS_KEY, P);
   const seq = ++genSeq;
   setStatus('busy', t('gen'));
   $('download').disabled = true;
@@ -233,7 +236,7 @@ function wire() {
 async function main() {
   const savedLang = store.get('lang');
   setLang(savedLang || ((navigator.language || '').toLowerCase().startsWith('uk') ? 'uk' : 'en'));
-  const saved = store.get('params');
+  const saved = store.get(PARAMS_KEY);
   writeForm(sanitize(saved && typeof saved === 'object' ? saved : DEFAULTS));
   viewer = createViewer($('view'));
   wire();
