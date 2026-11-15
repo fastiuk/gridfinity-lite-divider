@@ -22,10 +22,10 @@
 </table>
 <script type="module">
 // Serve the repository root (python3 -m http.server 8000) and open http://localhost:8000/tests/
-import { buildBin, sanitize, outerSize, G } from '../web/js/geometry.js';
+import { buildBin, dividerLayout, meshPositions, outerSize, sanitize } from '../web/js/geometry.js';
 import { binarySTL } from '../web/js/stl.js';
+import { meshToStep } from '../web/js/step.js';
 import { loadKernel } from '../web/js/kernel.js';
-import { meshPositions } from '../web/js/geometry.js';
 
 const CASES = [
   {},
@@ -52,6 +52,12 @@ const CASES = [
   { wall: 0.6, floor: 0.4 },
   { divLower: 10, scoop: true, scoopR: 8 },
   { ux: 10, uy: 10, uz: 3, cx: 1, cy: 1, label: false },
+  { ux: 2, uy: 2, cx: 2, cy: 2 },
+  { ux: 3, uy: 2, cx: 3, cy: 2, lipStyle: 'thin' },
+  { cx: 2, cy: 2, lipStyle: 'ultrathin' },
+  { cx: 2, cy: 2, gridTall: false },
+  { divLower: 8 },
+  { divT: 4, cx: 2, cy: 2 },
 ];
 
 const rows = document.getElementById('rows');
@@ -90,6 +96,13 @@ for (const c of CASES) {
     const stl = binarySTL(meshPositions(r.mesh), 'test');
     const n = new DataView(stl.buffer).getUint32(80, true);
     if (n !== r.tris || stl.length !== 84 + 50 * n) { ok = false; notes.push('STL size mismatch'); }
+    // STEP: closed genus-0 B-rep, so V − E + F − (inner loops) = 2
+    const s = meshToStep(r.mesh, 'test').stats;
+    const euler = s.vertices - s.edges + s.faces - s.innerLoops;
+    if (euler !== 2) { ok = false; notes.push(`STEP Euler ${euler}`); }
+    notes.push(`STEP ${s.faces} faces`);
+    const raised = [...dividerLayout(P).xs, ...dividerLayout(P).ys].filter((d) => d.top).length;
+    if (raised) notes.push(`${raised} raised divider(s)`);
     volumes[JSON.stringify({ ...c, lite: undefined })] ??= {};
     volumes[JSON.stringify({ ...c, lite: undefined })][P.lite ? 'lite' : 'std'] = r.volume;
   } catch (e) {
