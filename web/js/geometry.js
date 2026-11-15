@@ -19,7 +19,7 @@ export const G = {
   holeOffset: 13,  // magnet / screw holes sit 13 mm from the cell centre in X and Y
 };
 
-export const LIP_STYLES = ['standard', 'thin', 'none'];
+export const LIP_STYLES = ['standard', 'thin', 'ultrathin', 'none'];
 
 export const DEFAULTS = Object.freeze({
   ux: 2, uy: 2, uz: 6, lite: true, cx: 3, cy: 2,
@@ -89,17 +89,29 @@ function footInset(z) {
 }
 
 // Inset of the bin's inner wall from the outer outline at height z, including the stacking lip.
-//  standard: 0.7 / 1.8 / 1.9 mm lip profile with a 45° ledge under it
-//  thin:     the wall goes straight up; only the top 45° chamfer of the lip is kept. A stacked
-//            bin rests on that chamfer, so it sits at the same height as on a standard lip.
+// A stacked bin rests on the top chamfer in every style, so it sits at the same height.
+//  standard:  two levels: 1.9 chamfer, 1.8 band, 0.7 chamfer to a ledge at 2.6, 45° support below
+//  thin:      one level: 1.9 chamfer, 1.8 band, then straight back to the wall at 45°
+//  ultrathin: the wall goes straight up; only the top of the chamfer above the wall is kept
 function bodyProfile(P, H) {
   const w = P.wall;
   if (P.lipStyle === 'none') return { fn: () => w, breaks: [], top: H };
   const T = H + 2.5 + 1.9 - G.lipTrunc;          // truncated lip top
-  if (P.lipStyle === 'thin') {
+  if (P.lipStyle === 'ultrathin') {
     const zc = H + 4.4 - w;                      // where the top chamfer meets the wall
     const fn = (z) => (z <= zc ? w : Math.max(G.lipTrunc, 1.9 - (z - H - 2.5)));
     return { fn, breaks: [zc, T], top: T };
+  }
+  if (P.lipStyle === 'thin') {
+    const zb = H + 0.7 - (1.9 - w);              // where the 45° slope under the band meets the wall
+    const fn = (z) => {
+      if (z <= zb) return w;
+      if (z <= H + 0.7) return w + (z - zb);
+      if (z <= H + 2.5) return 1.9;
+      if (z <= T) return 1.9 - (z - H - 2.5);
+      return G.lipTrunc;
+    };
+    return { fn, breaks: [zb, H + 0.7, H + 2.5, T], top: T };
   }
   const zs = H - (2.6 - w);                      // start of the 45° support under the lip
   const fn = (z) => {
@@ -316,6 +328,7 @@ export function fileBase(P) {
   const parts = ['gridfinity', P.lite ? 'lite' : 'std', `${P.ux}x${P.uy}x${P.uz}`, `${P.cx}x${P.cy}comp`];
   if (P.lipStyle === 'standard') parts.push('lip');
   if (P.lipStyle === 'thin') parts.push('thinlip');
+  if (P.lipStyle === 'ultrathin') parts.push('ultrathinlip');
   if (P.label) parts.push(P.labelRows ? 'labels' : 'label');
   if (P.scoop) parts.push('scoop');
   if (!P.lite && P.magnets) parts.push('mag');

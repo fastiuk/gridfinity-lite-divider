@@ -69,7 +69,7 @@ function refreshLabels() {
   $('uz-sub').textContent = lipH
     ? t('unitHLip', { u: P.uz, mm: fmt(H, 0), lip: fmt(lipH) })
     : t('unitH', { u: P.uz, mm: fmt(H, 0) });
-  setField('lip-hint', 'textContent', t({ standard: 'lipStdHint', thin: 'lipThinHint', none: 'lipNoneHint' }[P.lipStyle]));
+  setField('lip-hint', 'textContent', t({ standard: 'lipStdHint', thin: 'lipThinHint', ultrathin: 'lipUltraHint', none: 'lipNoneHint' }[P.lipStyle]));
   $('base-hint').textContent = P.lite ? t('liteHint') : t('stdHint');
   $('std-only').hidden = P.lite;
   $('floor-wrap').hidden = !P.lite;
