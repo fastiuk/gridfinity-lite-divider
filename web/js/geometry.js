@@ -334,19 +334,23 @@ export function buildBin(M, P) {
             const zF = zTop - G.tabFront;                // bottom of the front face
             const zK = zF - Lt * tan;                    // underside meets the back face
             const lF = yF - rowFront(j);
+            // At the height of the tab's front face the compartment is a shorter rounded box,
+            // which rounds the front face's vertical edges; below that it is the full box.
             const shorter = keep(M.hull([
-              ...ringPoints(x0, rowFront(j) + lF / 2, cw, lF, 0, zFloor - 1, rr, 0.01),
+              ...ringPoints(x0, rowFront(j) + lF / 2, cw, lF, 0, zF - 0.05, rr, 0.01),
               ...ringPoints(x0, rowFront(j) + lF / 2, cw, lF, 0, topZ + 1, rr, 0.01),
             ]));
-            // (starts 0.05 mm in front of the tab so it overlaps the shorter box instead of
-            // just touching it, which could leave a zero-thickness wall between them)
+            const frontLow = keep(keep(M.cube([cw + 2, lF + 2, zF - zFloor + 2], false))
+              .translate([x0 - cw / 2 - 1, rowFront(j) - 2, zFloor - 2]));
+            // Space under the tab. It starts 0.05 mm in front of the tab so it overlaps the
+            // parts in front instead of just touching them (no zero-thickness wall between).
             const under = [];
             for (const [y, z] of [[yF - 0.05, zFloor - 2], [yF - 0.05, zF], [yF, zF], [yB + 1, zK - tan], [yB + 1, zFloor - 2]]) {
               under.push([x0 - cw / 2 - 1, y, z], [x0 + cw / 2 + 1, y, z]);
             }
-            // in front of the tab: the shorter box; under it: the full box; above its top: the
-            // full box limited like the open region, so corners there stay rounded too
-            box = keep(box.intersect(unionAll([keep(M.hull(under)), shorter, open0])));
+            // Above the tab top: the full box limited like the open region, so the corners there
+            // stay rounded too.
+            box = keep(box.intersect(unionAll([keep(M.hull(under)), frontLow, shorter, open0])));
           }
           boxes.push(box);
         }
